@@ -1,0 +1,7 @@
+models/*.onnx
+.venv/
+renders/
+uploads/
+__pycache__/
+*.mp4
+.DS_Store

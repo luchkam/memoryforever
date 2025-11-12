@@ -1,0 +1,9 @@
+modules = ["python-3.12"]
+
+[deployment]
+deploymentTarget = "vm"
+run = ["sh", "-c", "python -u bot.py"]
+ignorePorts = true
+
+[agent]
+expertMode = true

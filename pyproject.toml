@@ -1,0 +1,24 @@
+[project]
+name = "repl-nix-workspace"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+  "pyTelegramBotAPI",
+  "requests",
+  "Pillow",
+  "numpy",
+  "imageio[ffmpeg]",
+  "onnxruntime==1.19.2",
+  "opencv-python-headless<5",
+  "rembg",
+  "pymatting",
+  "scikit-image",
+  "moviepy",
+  "imageio-ffmpeg",
+  "opencv-python>=4.11.0.86",
+  "fastapi",
+  "uvicorn[standard]",
+  "python-multipart",
+  "python-dotenv",
+]
