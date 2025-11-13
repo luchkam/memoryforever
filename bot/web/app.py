@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, FastAPI, File, HTTPException, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from .. import assets, state
@@ -385,7 +385,11 @@ def _run_generation(session_id: str) -> None:
 
 @router.get("/catalog")
 def get_catalog() -> Dict[str, Any]:
-    return assets.CATALOG
+    return JSONResponse(
+        content=assets.CATALOG,
+        media_type="application/json; charset=utf-8",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.post("/session/start")
@@ -548,4 +552,12 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(router, prefix="/v1")
+
+    @app.get("/", include_in_schema=False)
+    def root() -> PlainTextResponse:
+        return PlainTextResponse(
+            "Memory Forever API is up. See /v1/catalog",
+            media_type="text/plain; charset=utf-8",
+        )
+
     return app
