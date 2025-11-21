@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import os
+import shutil
 import threading
 import uuid
 from pathlib import Path
@@ -9,7 +11,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, FastAPI, File, HTTPException, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from moviepy import ImageClip, AudioFileClip, concatenate_videoclips, CompositeVideoClip, ColorClip
+import moviepy.audio.fx.all as afx
 
 from .. import assets, state
 from ..config import (
@@ -40,13 +45,24 @@ from ..render.pipeline import (
 ensure_directories()
 Path("renders/temp").mkdir(parents=True, exist_ok=True)
 
-router = APIRouter()
+router = APIRouter(prefix="/v1")
+
+# FS paths
+ROOT = Path(__file__).resolve().parents[2]
+UPLOADS_DIR = ROOT / "uploads"
+RENDERS_DIR = ROOT / "renders"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+RENDERS_DIR.mkdir(parents=True, exist_ok=True)
+
+# in-memory store for render jobs
+RENDER_JOBS: Dict[str, Dict[str, Any]] = {}
 
 _ALLOWED_ORIGINS = [
     "https://memoryforever.ru",
     "https://www.memoryforever.ru",
     "http://localhost:3000",
-    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
 ]
 
 DEFAULT_TITLE_TEXT = "Memory Forever — Память навсегда с вами"
@@ -103,6 +119,17 @@ class StatusResponse(BaseModel):
     scenes: List[Dict[str, Any]]
     state: Dict[str, Any]
     result_path: Optional[str] = None
+
+
+class RenderRequest(BaseModel):
+    format_key: str
+    scene_key: str
+    background_key: str
+    music_key: str
+    title: Optional[str] = ""
+    subtitle: Optional[str] = ""
+    photos: List[str]
+    user: Optional[str] = None
 
 
 def _validate_keys(req: StartSessionRequest) -> None:
@@ -392,6 +419,123 @@ def get_catalog() -> Dict[str, Any]:
     )
 
 
+@router.head("/catalog")
+async def head_catalog():
+    return PlainTextResponse("", status_code=200)
+
+
+@router.post("/upload")
+async def upload_files(files: List[UploadFile] = File(...)):
+    saved: List[str] = []
+    for upload in files:
+        ext = Path(upload.filename or "").suffix.lower()
+        name = f"{uuid.uuid4().hex}{ext}"
+        dest = UPLOADS_DIR / name
+        with dest.open("wb") as out:
+            shutil.copyfileobj(upload.file, out)
+        saved.append(f"/uploads/{name}")
+    return {"files": saved}
+
+
+@router.post("/render/start")
+async def render_start(payload: RenderRequest):
+    job_id = uuid.uuid4().hex
+    RENDER_JOBS[job_id] = {"status": "queued"}
+    asyncio.create_task(_run_render(job_id, payload))
+    return {"job_id": job_id, "status": "queued", "status_url": f"/v1/render/status/{job_id}"}
+
+
+@router.get("/render/status/{job_id}")
+async def render_status(job_id: str):
+    data = RENDER_JOBS.get(job_id)
+    if not data:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return data
+
+
+async def _run_render(job_id: str, payload: RenderRequest) -> None:
+    """
+    Минимальный рендер:
+    - слайд-шоу из payload.photos (5с на фото), вписываем в 1920x1080 на чёрном фоне
+    - музыка по payload.music_key, если нашлась в CATALOG
+    - сохраняем renders/<job_id>.mp4 и обновляем RENDER_JOBS
+    """
+    try:
+        job = RENDER_JOBS.get(job_id, {"status": "queued"})
+        job.update({"status": "processing", "progress": 10})
+        RENDER_JOBS[job_id] = job
+
+        abs_photos: list[str] = []
+        for p in payload.photos:
+            if p.startswith("/uploads/"):
+                rel = p.split("/uploads/")[1]
+                abs_photos.append(str((UPLOADS_DIR / rel).resolve()))
+            else:
+                abs_photos.append(str((ROOT / p).resolve()))
+
+        for ph in abs_photos:
+            if not Path(ph).exists():
+                raise FileNotFoundError(f"photo not found: {ph}")
+
+        clips = []
+        for ph in abs_photos:
+            # MoviePy 2.x: resized / with_duration / with_position
+            c = ImageClip(ph).resized(height=1080).with_duration(5)
+            if c.w != 1920 or c.h != 1080:
+                bg = ColorClip(size=(1920, 1080), color=(0, 0, 0), duration=c.duration)
+                c = CompositeVideoClip([bg, c.with_position("center")])
+            clips.append(c)
+
+        video = concatenate_videoclips(clips, method="compose") if len(clips) > 1 else clips[0]
+        job.update({"progress": 60})
+        RENDER_JOBS[job_id] = job
+
+        music_path = None
+        for m in assets.CATALOG.get("music", []):
+            if m.get("key") == payload.music_key:
+                music_path = str((ROOT / m["path"]).resolve())
+                break
+
+        if music_path and Path(music_path).exists():
+            audio = AudioFileClip(music_path)
+            target_duration = video.duration
+            audio = audio.with_effects(
+                [
+                    afx.AudioLoop(duration=target_duration),
+                    afx.AudioFadeOut(min(1.0, target_duration)),
+                ]
+            )
+            video = video.with_audio(audio)
+
+        out_path = RENDERS_DIR / f"{job_id}.mp4"
+        job.update({"progress": 90})
+        RENDER_JOBS[job_id] = job
+
+        video.write_videofile(
+            str(out_path),
+            codec="libx264",
+            audio_codec="aac",
+            fps=30,
+            preset="ultrafast",
+            threads=2,
+            verbose=False,
+            logger=None,
+        )
+        video.close()
+
+        job.update(
+            {
+                "status": "done",
+                "progress": 100,
+                "result": {"video_url": f"/renders/{job_id}.mp4"},
+            }
+        )
+        RENDER_JOBS[job_id] = job
+
+    except Exception as e:  # noqa: BLE001
+        RENDER_JOBS[job_id] = {"status": "error", "error": str(e)}
+
+
 @router.post("/session/start")
 def start_session(req: StartSessionRequest) -> Dict[str, Any]:
     _validate_keys(req)
@@ -547,11 +691,12 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_ALLOWED_ORIGINS,
+        allow_origin_regex=r"^https://.*\.creatium\.app$",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.include_router(router, prefix="/v1")
+    app.include_router(router)
 
     @app.get("/", include_in_schema=False)
     def root() -> PlainTextResponse:
@@ -559,5 +704,12 @@ def create_app() -> FastAPI:
             "Memory Forever API is up. See /v1/catalog",
             media_type="text/plain; charset=utf-8",
         )
+
+    @app.head("/", include_in_schema=False)
+    async def head_root():
+        return PlainTextResponse("", status_code=200)
+
+    app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
+    app.mount("/renders", StaticFiles(directory=str(RENDERS_DIR)), name="renders")
 
     return app
