@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import os
-import shutil
 import threading
 import uuid
 from pathlib import Path
@@ -13,9 +13,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from moviepy import ImageClip, AudioFileClip, concatenate_videoclips, CompositeVideoClip, ColorClip
-import moviepy.audio.fx.all as afx
-
 from .. import assets, state
 from ..config import (
     FREE_HUGS_LIMIT,
@@ -32,14 +29,10 @@ from ..config import (
     CANDLE_PATH,
     ensure_directories,
 )
+from ..media.storage import save_upload_image_bytes
 from ..render.pipeline import (
-    ensure_jpeg_copy,
-    ensure_runway_datauri_under_limit,
-    runway_start,
-    runway_poll,
-    download,
-    apply_fullscreen_watermark,
-    postprocess_concat_ffmpeg,
+    make_start_frame as pipeline_make_start_frame,
+    web_render_video,
 )
 
 ensure_directories()
@@ -49,6 +42,7 @@ router = APIRouter(prefix="/v1")
 
 # FS paths
 ROOT = Path(__file__).resolve().parents[2]
+BASE_DIR = ROOT
 UPLOADS_DIR = ROOT / "uploads"
 RENDERS_DIR = ROOT / "renders"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
@@ -428,19 +422,24 @@ async def head_catalog():
 async def upload_files(files: List[UploadFile] = File(...)):
     saved: List[str] = []
     for upload in files:
-        ext = Path(upload.filename or "").suffix.lower()
-        name = f"{uuid.uuid4().hex}{ext}"
-        dest = UPLOADS_DIR / name
-        with dest.open("wb") as out:
-            shutil.copyfileobj(upload.file, out)
-        saved.append(f"/uploads/{name}")
+        contents = await upload.read()
+        if not contents:
+            raise HTTPException(status_code=400, detail="Empty file uploaded")
+
+        ctype = (upload.content_type or "").lower()
+        if not ctype.startswith("image/"):
+            raise HTTPException(status_code=400, detail="Uploaded file is not an image")
+
+        ext = Path(upload.filename or "").suffix.lower() or ".jpg"
+        saved_path = save_upload_image_bytes(contents, owner_label="web", ext_hint=ext)
+        saved.append("/" + Path(saved_path).as_posix())
     return {"files": saved}
 
 
 @router.post("/render/start")
 async def render_start(payload: RenderRequest):
     job_id = uuid.uuid4().hex
-    RENDER_JOBS[job_id] = {"status": "queued"}
+    RENDER_JOBS[job_id] = {"status": "queued", "photos": payload.photos, "payload": payload.model_dump()}
     asyncio.create_task(_run_render(job_id, payload))
     return {"job_id": job_id, "status": "queued", "status_url": f"/v1/render/status/{job_id}"}
 
@@ -454,86 +453,52 @@ async def render_status(job_id: str):
 
 
 async def _run_render(job_id: str, payload: RenderRequest) -> None:
-    """
-    Минимальный рендер:
-    - слайд-шоу из payload.photos (5с на фото), вписываем в 1920x1080 на чёрном фоне
-    - музыка по payload.music_key, если нашлась в CATALOG
-    - сохраняем renders/<job_id>.mp4 и обновляем RENDER_JOBS
-    """
+    job = RENDER_JOBS.get(job_id, {})
+    job.update({"status": "processing", "progress": 5})
+    RENDER_JOBS[job_id] = job
+
     try:
-        job = RENDER_JOBS.get(job_id, {"status": "queued"})
-        job.update({"status": "processing", "progress": 10})
+        if not payload.photos:
+            raise ValueError("No photos provided")
+
+        abs_photos: List[str] = []
+        for rel_path in payload.photos:
+            rel = rel_path.lstrip("/")
+            abs_path = (BASE_DIR / rel).resolve()
+            if not abs_path.exists():
+                raise FileNotFoundError(f"photo not found: {abs_path}")
+            abs_photos.append(str(abs_path))
+
+        job["progress"] = 40
         RENDER_JOBS[job_id] = job
+        print(f"[WEB_DEBUG] job {job_id} payload.photos = {payload.photos}")
+        print(f"[WEB_DEBUG] job {job_id} abs_photos = {abs_photos}")
 
-        abs_photos: list[str] = []
-        for p in payload.photos:
-            if p.startswith("/uploads/"):
-                rel = p.split("/uploads/")[1]
-                abs_photos.append(str((UPLOADS_DIR / rel).resolve()))
-            else:
-                abs_photos.append(str((ROOT / p).resolve()))
-
-        for ph in abs_photos:
-            if not Path(ph).exists():
-                raise FileNotFoundError(f"photo not found: {ph}")
-
-        clips = []
-        for ph in abs_photos:
-            # MoviePy 2.x: resized / with_duration / with_position
-            c = ImageClip(ph).resized(height=1080).with_duration(5)
-            if c.w != 1920 or c.h != 1080:
-                bg = ColorClip(size=(1920, 1080), color=(0, 0, 0), duration=c.duration)
-                c = CompositeVideoClip([bg, c.with_position("center")])
-            clips.append(c)
-
-        video = concatenate_videoclips(clips, method="compose") if len(clips) > 1 else clips[0]
-        job.update({"progress": 60})
-        RENDER_JOBS[job_id] = job
-
-        music_path = None
-        for m in assets.CATALOG.get("music", []):
-            if m.get("key") == payload.music_key:
-                music_path = str((ROOT / m["path"]).resolve())
-                break
-
-        if music_path and Path(music_path).exists():
-            audio = AudioFileClip(music_path)
-            target_duration = video.duration
-            audio = audio.with_effects(
-                [
-                    afx.AudioLoop(duration=target_duration),
-                    afx.AudioFadeOut(min(1.0, target_duration)),
-                ]
-            )
-            video = video.with_audio(audio)
-
-        out_path = RENDERS_DIR / f"{job_id}.mp4"
-        job.update({"progress": 90})
-        RENDER_JOBS[job_id] = job
-
-        video.write_videofile(
-            str(out_path),
-            codec="libx264",
-            audio_codec="aac",
-            fps=30,
-            preset="ultrafast",
-            threads=2,
-            verbose=False,
-            logger=None,
+        video_path = web_render_video(
+            format_key=payload.format_key,
+            scene_key=payload.scene_key,
+            background_key=payload.background_key,
+            music_key=payload.music_key,
+            title=payload.title or "",
+            subtitle=payload.subtitle or "",
+            photo_paths=abs_photos,
+            session_id=payload.user,
         )
-        video.close()
 
-        job.update(
-            {
-                "status": "done",
-                "progress": 100,
-                "result": {"video_url": f"/renders/{job_id}.mp4"},
-            }
-        )
+        job["status"] = "done"
+        job["progress"] = 100
+        job["result"] = {
+            "video_path": video_path,
+            "video_url": f"/renders/{Path(video_path).name}",
+        }
         RENDER_JOBS[job_id] = job
+        print(f"[WEB_DEBUG] job {job_id} completed: {video_path}")
 
-    except Exception as e:  # noqa: BLE001
-        RENDER_JOBS[job_id] = {"status": "error", "error": str(e)}
+    except Exception as exc:  # noqa: BLE001
+        job["status"] = "error"
+        job["error"] = str(exc)
+        RENDER_JOBS[job_id] = job
+        print(f"[WEB_DEBUG] error for job {job_id}: {exc!r}")
 
 
 @router.post("/session/start")
@@ -615,9 +580,7 @@ def make_start_frame(req: SceneActionRequest) -> Dict[str, Any]:
     if not bg_path or not os.path.isfile(bg_path):
         raise HTTPException(status_code=400, detail="Background file not found")
 
-    from ..render.pipeline import make_start_frame as _make_start_frame
-
-    start_path, metrics = _make_start_frame(job["photos"], st["format"], bg_path, layout=None)
+    start_path, metrics = pipeline_make_start_frame(job["photos"], st["format"], bg_path, layout=None)
     job["start_frame"] = start_path
     job["layout_metrics"] = metrics
     job["status"] = JOB_STATUS_AWAITING_APPROVAL
