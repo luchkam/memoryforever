@@ -6,6 +6,7 @@ import io
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import textwrap
@@ -13,6 +14,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from functools import lru_cache
+from pathlib import Path
 from typing import List
 
 import numpy as np
@@ -52,6 +54,7 @@ TITLE_FONT_BOLD_CANDIDATES = [p for p in TITLE_FONT_BOLD_CANDIDATES if p]
 
 from ..config import (
     ADMIN_CHAT_ID,
+    FREE_HUGS_LIMIT,
     CANDLE_PATH,
     CANDLE_WIDTH_FRAC,
     CHEST_FOG_COLOR,
@@ -73,6 +76,7 @@ from ..config import (
     LEAN_MAX_VISIBLE_FRAC,
     LEAN_MIN_GAP_FRAC,
     LEAN_TARGET_VISIBLE_FRAC,
+    FREE_HUGS_SCENE,
     MAX_UPSCALE,
     OAI_DEBUG,
     PREVIEW_START_FRAME,
@@ -100,6 +104,8 @@ from ..config import (
     WAIST_FOG_START_FRAC,
     WAIST_VIRTUAL_FLOOR_FRAC,
     WATERMARK_PATH,
+    WM_CORNER_WIDTH_PX,
+    WM_CORNER_MARGIN_PX,
 )
 from ..config import settings
 from ..app import bot
@@ -115,6 +121,16 @@ def _ensure_rembg_available() -> None:
         raise ModuleNotFoundError(message)
 
 
+def _wm_safe_top_px() -> int:
+    try:
+        with Image.open(WATERMARK_PATH) as im:
+            w, h = im.size
+        scaled_h = int(round(WM_CORNER_WIDTH_PX * (h / max(1, w))))
+        return WM_CORNER_MARGIN_PX + scaled_h + 12
+    except Exception:
+        return 160
+
+
 @lru_cache(maxsize=None)
 def _get_rmbg_session(model: str):
     _ensure_rembg_available()
@@ -128,8 +144,15 @@ def _rembg_remove(data, *, model: str, **kwargs):
     session = _get_rmbg_session(model)
     return remove(data, session=session, **kwargs)
 
-from ..assets import SCENE_PROMPTS
-from ..state import users, IN_RENDER
+from ..assets import SCENE_PROMPTS, SCENES, BG_FILES, MUSIC
+from ..state import (
+    users,
+    IN_RENDER,
+    is_free_hugs,
+    is_free_hugs_whitelisted,
+    get_free_hugs_count,
+    inc_free_hugs_count,
+)
 from ..utils import cleanup_uploads_folder
 
 
@@ -638,7 +661,12 @@ def _run_ffmpeg(cmd: list[str], tag: str, out_hint: str | None = None):
 
 def apply_fullscreen_watermark(in_video: str, out_video: str, wm_path: str,
                                mode: str = FREE_HUGS_WM_MODE,
-                               alpha: float = FREE_HUGS_WM_ALPHA):
+                               alpha: float = FREE_HUGS_WM_ALPHA,
+                               grid_cols: int | None = None,
+                               grid_rows: int | None = None,
+                               grid_margin: int | None = None,
+                               scale: float | None = None,
+                               rotate: float | None = None):
     """
     Накладывает «большой» полупрозрачный водяной знак на видео.
     mode='single' — один крупный по центру; mode='grid' — сетка маленьких.
@@ -648,9 +676,9 @@ def apply_fullscreen_watermark(in_video: str, out_video: str, wm_path: str,
 
     m = (mode or "").lower()
     if m == "grid":
-        cols = max(1, FREE_HUGS_WM_GRID_COLS)
-        rows = max(1, FREE_HUGS_WM_GRID_ROWS)
-        margin = max(0, FREE_HUGS_WM_GRID_MARGIN)
+        cols = max(1, grid_cols if grid_cols is not None else FREE_HUGS_WM_GRID_COLS)
+        rows = max(1, grid_rows if grid_rows is not None else FREE_HUGS_WM_GRID_ROWS)
+        margin = max(0, grid_margin if grid_margin is not None else FREE_HUGS_WM_GRID_MARGIN)
         N = cols * rows
 
         # 1) приводим логотип к RGBA и задаём прозрачность
@@ -675,22 +703,27 @@ def apply_fullscreen_watermark(in_video: str, out_video: str, wm_path: str,
                 idx += 1
     else:
         # single: один крупный логотип по центру; масштаб и поворот настраиваемые
-        scale = max(0.2, min(1.5, FREE_HUGS_WM_SCALE))
-        rot   = float(FREE_HUGS_WM_ROTATE)
+        s = max(0.2, min(1.5, scale if scale is not None else FREE_HUGS_WM_SCALE))
+        rot = float(rotate if rotate is not None else FREE_HUGS_WM_ROTATE)
 
         if abs(rot) > 0.01:
             fc = (
                 f"[1:v]format=rgba,colorchannelmixer=aa={alpha}[wm0];"
-                f"[wm0][0:v]scale2ref=w='main_w*{scale}':h=-1[wm][base];"
+                f"[wm0][0:v]scale2ref=w='main_w*{s}':h=-1[wm][base];"
                 f"[wm]rotate={rot}*PI/180:c=none:ow='rotw(iw)':oh='roth(ih)'[wmr];"
                 f"[base][wmr]overlay=x='(main_w-w)/2':y='(main_h-h)/2':format=auto[v]"
             )
         else:
             fc = (
                 f"[1:v]format=rgba,colorchannelmixer=aa={alpha}[wm0];"
-                f"[wm0][0:v]scale2ref=w='main_w*{scale}':h=-1[wm][base];"
+                f"[wm0][0:v]scale2ref=w='main_w*{s}':h=-1[wm][base];"
                 f"[base][wm]overlay=x='(main_w-w)/2':y='(main_h-h)/2':format=auto[v]"
             )
+
+    final_out = out_video
+    tmp_out = out_video
+    if Path(in_video).resolve() == Path(out_video).resolve():
+        tmp_out = str(Path(out_video).with_name(f"{Path(out_video).stem}_wm_{uuid.uuid4().hex}.mp4"))
 
     cmd = [
         "ffmpeg", "-y",
@@ -702,10 +735,12 @@ def apply_fullscreen_watermark(in_video: str, out_video: str, wm_path: str,
         "-pix_fmt", "yuv420p",
         "-c:a", "copy",
         "-movflags", "+faststart",
-        out_video
+        tmp_out
     ]
-    _run_ffmpeg(cmd, tag="wm_fullscreen", out_hint=out_video)
-    return out_video
+    _run_ffmpeg(cmd, tag="wm_fullscreen", out_hint=tmp_out)
+    if tmp_out != final_out:
+        shutil.move(tmp_out, final_out)
+    return final_out
 
 def _log_fail(uid: int, reason: str, payload: dict | None = None, response: dict | None = None):
     try:
@@ -1500,6 +1535,208 @@ def postprocess_concat_ffmpeg(video_paths: List[str], music_path: str|None, titl
             pass
 
     return save_as
+
+DEFAULT_TITLE_TEXT = "Memory Forever — Память навсегда с вами"
+FINAL_VIDEO_WIDTH = 720
+FINAL_VIDEO_HEIGHT = 1280
+
+
+def _abs_project_path(path: str) -> str:
+    p = Path(path)
+    if not p.is_absolute():
+        p = PROJECT_ROOT / path
+    return str(p.resolve())
+
+
+def _sanitize_owner_label(value: str | None) -> str:
+    if not value:
+        return "web"
+    cleaned = re.sub(r"[^A-Za-z0-9_-]+", "_", str(value))
+    return cleaned or "web"
+
+
+def _runway_segment_from_startframe(
+    start_frame_path: str,
+    prompt: str,
+    duration: int,
+    *,
+    owner_label: str,
+    scene_key: str,
+    session_id: str | None = None,
+) -> str:
+    send_path = ensure_jpeg_copy(start_frame_path) if RUNWAY_SEND_JPEG else start_frame_path
+    data_uri, used_path = ensure_runway_datauri_under_limit(send_path)
+    if not data_uri or len(data_uri) < 64:
+        raise RuntimeError("EMPTY_START_FRAME_DATA")
+
+    start_resp = runway_start(data_uri, prompt, duration)
+    task_id = start_resp.get("id") or start_resp.get("task", {}).get("id")
+    if not task_id:
+        raise RuntimeError("RUNWAY_NO_TASK_ID")
+
+    poll = runway_poll(task_id)
+    status = (poll or {}).get("status")
+    if status != "SUCCEEDED":
+        raise RuntimeError(f"RUNWAY_STATUS_{status}")
+
+    output = poll.get("output") or []
+    url: str | None = None
+    if output:
+        first = output[0]
+        url = first if isinstance(first, str) else first.get("url")
+    if not url:
+        raise RuntimeError("RUNWAY_NO_URL")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    seg_name = f"{owner_label}_{timestamp}_{uuid.uuid4().hex}.mp4"
+    seg_path = os.path.join("renders", seg_name)
+    download(url, seg_path)
+
+    needs_wm = (
+        scene_key == FREE_HUGS_SCENE
+        and FULL_WATERMARK_PATH
+        and os.path.isfile(FULL_WATERMARK_PATH)
+        and (not session_id or not is_free_hugs_whitelisted(session_id))
+    )
+    if needs_wm:
+        apply_fullscreen_watermark(
+            in_video=seg_path,
+            out_video=seg_path,
+            wm_path=FULL_WATERMARK_PATH,
+            mode=FREE_HUGS_WM_MODE,
+            alpha=FREE_HUGS_WM_ALPHA,
+            grid_cols=FREE_HUGS_WM_GRID_COLS,
+            grid_rows=FREE_HUGS_WM_GRID_ROWS,
+            grid_margin=FREE_HUGS_WM_GRID_MARGIN,
+            scale=FREE_HUGS_WM_SCALE,
+            rotate=FREE_HUGS_WM_ROTATE,
+        )
+
+    if scene_key == FREE_HUGS_SCENE and session_id and not is_free_hugs_whitelisted(session_id):
+        inc_free_hugs_count(session_id)
+
+    return seg_path
+
+
+def render_full_video_from_photos_web(
+    *,
+    format_key: str,
+    scene_key: str,
+    background_key: str,
+    music_key: str | None,
+    title: str | None,
+    subtitle: str | None,
+    photo_paths: list[str],
+    owner_label: str | None = None,
+    session_id: str | None = None,
+) -> str:
+    if not photo_paths:
+        raise ValueError("photo_paths list is empty")
+
+    scene = SCENES.get(scene_key)
+    if not scene:
+        raise ValueError(f"Unknown scene: {scene_key}")
+
+    bg_rel = BG_FILES.get(background_key)
+    if not bg_rel:
+        raise ValueError(f"Unknown background: {background_key}")
+
+    bg_abs = _abs_project_path(bg_rel)
+
+    prompt = scene.get("prompt") or SCENE_PROMPTS.get(scene.get("kind"), "")
+    duration = int(scene.get("duration") or 5)
+
+    for idx, path in enumerate(photo_paths, start=1):
+        try:
+            size = os.path.getsize(path)
+            print(f"[WEB_RENDER] photo#{idx}: {path} ({size} bytes)")
+            with Image.open(path) as img:
+                img.size
+        except Exception as exc:  # noqa: BLE001
+            print(f"[WEB_RENDER] photo#{idx} open failed ({type(exc).__name__}: {exc})")
+            raise RuntimeError(f"Invalid image file: {path}") from exc
+
+    start_frame_path, layout_metrics = make_start_frame(photo_paths, format_key, bg_abs, layout=None)
+
+    if (
+        scene_key == FREE_HUGS_SCENE
+        and session_id
+        and not is_free_hugs_whitelisted(session_id)
+        and get_free_hugs_count(session_id) >= FREE_HUGS_LIMIT
+    ):
+        raise RuntimeError("FREE_HUGS_LIMIT_REACHED")
+
+    seg_path = _runway_segment_from_startframe(
+        start_frame_path,
+        prompt,
+        duration,
+        owner_label=owner_label,
+        scene_key=scene_key,
+        session_id=session_id,
+    )
+
+    music_path = None
+    if music_key:
+        music_rel = MUSIC.get(music_key)
+        if music_rel:
+            music_abs = _abs_project_path(music_rel)
+            if os.path.isfile(music_abs):
+                music_path = music_abs
+
+    titles_meta = None
+    if title or subtitle:
+        titles_meta = {
+            "fio": title or "",
+            "dates": subtitle or "",
+            "mem": "",
+        }
+
+    label = owner_label or _sanitize_owner_label(session_id)
+    final_name = f"{label}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}_FINAL.mp4"
+    final_path = os.path.join("renders", final_name)
+    postprocess_concat_ffmpeg(
+        [seg_path],
+        music_path,
+        DEFAULT_TITLE_TEXT,
+        final_path,
+        bg_overlay_file=bg_abs,
+        titles_meta=titles_meta,
+        candle_path=CANDLE_PATH,
+    )
+    return os.path.abspath(final_path)
+
+
+def web_render_video(
+    *,
+    format_key: str,
+    scene_key: str,
+    background_key: str,
+    music_key: str | None,
+    title: str,
+    subtitle: str,
+    photo_paths: list[str],
+    session_id: str | None = None,
+) -> str:
+    abs_paths = []
+    for rel in photo_paths:
+        path = Path(rel)
+        if not path.is_absolute():
+            path = PROJECT_ROOT / rel.lstrip("/")
+        abs_paths.append(str(path.resolve()))
+    owner_label = _sanitize_owner_label(session_id)
+    print(f"[WEB_RENDER] resolved photo_paths: {abs_paths}")
+    return render_full_video_from_photos_web(
+        format_key=format_key,
+        scene_key=scene_key,
+        background_key=background_key,
+        music_key=music_key,
+        title=title,
+        subtitle=subtitle,
+        photo_paths=abs_paths,
+        owner_label=owner_label,
+        session_id=session_id,
+    )
+
 
 def cleanup_dir_keep_last_n(dir_path: str, keep_n: int = 20, extensions: tuple[str, ...] = ()):
     try:
