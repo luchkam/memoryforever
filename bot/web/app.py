@@ -27,12 +27,14 @@ from ..config import (
     PAYMENT_GATE_ENABLED,
     WATERMARK_PATH,
     CANDLE_PATH,
+    ADMIN_CHAT_ID,
     ensure_directories,
 )
 from ..media.storage import save_upload_image_bytes
 from ..render.pipeline import (
     make_start_frame as pipeline_make_start_frame,
     web_render_video,
+    _abs_project_path,
 )
 
 ensure_directories()
@@ -124,6 +126,18 @@ class RenderRequest(BaseModel):
     subtitle: Optional[str] = ""
     photos: List[str]
     user: Optional[str] = None
+
+
+class StartFrameRequest(BaseModel):
+    scene_key: str
+    format_key: str
+    background_key: str
+    photos: List[str]
+
+
+class SupportRequest(BaseModel):
+    text: str
+    user_contact: Optional[str] = None
 
 
 def _validate_keys(req: StartSessionRequest) -> None:
@@ -418,6 +432,40 @@ async def head_catalog():
     return PlainTextResponse("", status_code=200)
 
 
+@router.post("/start-frame")
+async def start_frame(req: StartFrameRequest):
+    scene = assets.SCENES.get(req.scene_key)
+    if not scene:
+        raise HTTPException(status_code=400, detail="Unknown scene_key")
+
+    bg_rel = assets.BG_FILES.get(req.background_key)
+    if not bg_rel:
+        raise HTTPException(status_code=400, detail="Unknown background_key")
+
+    if not req.photos:
+        raise HTTPException(status_code=400, detail="No photos provided")
+
+    abs_photos: List[str] = []
+    for rel in req.photos:
+        rel_path = rel.lstrip("/")
+        abs_path = (BASE_DIR / rel_path).resolve()
+        if not abs_path.exists():
+            raise HTTPException(status_code=400, detail=f"photo not found: {rel}")
+        abs_photos.append(str(abs_path))
+
+    bg_abs = _abs_project_path(bg_rel)
+    if not os.path.isfile(bg_abs):
+        raise HTTPException(status_code=400, detail="Background file not found")
+
+    try:
+        start_path, metrics = pipeline_make_start_frame(abs_photos, req.format_key, bg_abs, layout=None)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"start frame failed: {exc}") from exc
+
+    rel_url = "/" + str(Path(start_path).as_posix())
+    return {"start_frame_url": rel_url, "metrics": metrics, "width": 720, "height": 1280}
+
+
 @router.post("/upload")
 async def upload_files(files: List[UploadFile] = File(...)):
     saved: List[str] = []
@@ -434,6 +482,23 @@ async def upload_files(files: List[UploadFile] = File(...)):
         saved_path = save_upload_image_bytes(contents, owner_label="web", ext_hint=ext)
         saved.append("/" + Path(saved_path).as_posix())
     return {"files": saved}
+
+
+@router.post("/support")
+async def support_message(req: SupportRequest):
+    if not req.text or not req.text.strip():
+        raise HTTPException(status_code=400, detail="Text is required")
+    if not ADMIN_CHAT_ID:
+        raise HTTPException(status_code=400, detail="Support channel is not configured")
+    msg = f"🛟 Веб-запрос в поддержку\n{req.text.strip()}"
+    if req.user_contact:
+        msg += f"\n\nКонтакт: {req.user_contact.strip()}"
+    try:
+        from ..app import bot  # локальный импорт, чтобы не ломать ранний старт
+        bot.send_message(int(ADMIN_CHAT_ID), msg)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Failed to send support message: {exc}") from exc
+    return {"ok": True}
 
 
 @router.post("/render/start")
