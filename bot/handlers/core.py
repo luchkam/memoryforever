@@ -57,6 +57,7 @@ from ..render.pipeline import (
     postprocess_concat_ffmpeg,
     cleanup_artifacts,
 )
+from ..media.storage import save_upload_image_bytes
 from ..utils import cleanup_uploads_folder
 
 SCENES = assets.SCENES
@@ -322,9 +323,7 @@ def kb_start_approval():
 def _download_tg_photo(file_id: str, uid: int) -> str:
     fi = bot.get_file(file_id)
     content = requests.get(f"https://api.telegram.org/file/bot{TG_TOKEN}/{fi.file_path}", timeout=120).content
-    pth = f"uploads/{uid}_{int(time.time())}_{uuid.uuid4().hex}.jpg"
-    with open(pth, "wb") as f:
-        f.write(content)
+    pth = save_upload_image_bytes(content, owner_label=uid, ext_hint=".jpg")
 
     # Очистка старых входящих фото
     cleanup_uploads_folder()

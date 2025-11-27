@@ -1,0 +1,147 @@
+<div class="mf-app">
+  <div class="mf-card">
+    <header class="mf-card__header">
+      <div class="mf-brand">
+        <div class="mf-brand__icon">🎞️</div>
+        <div>
+          <h1 class="mf-brand__title">Memory Forever</h1>
+          <p class="mf-brand__subtitle">Создайте трогательное видео из ваших фото</p>
+        </div>
+      </div>
+      <div class="mf-badge">beta</div>
+    </header>
+
+    <div class="mf-banner">
+      Полная версия доступна в Telegram-боте:
+      <a href="https://t.me/memory_forever_bot" target="_blank" rel="noopener">@memory_forever_bot</a>
+    </div>
+
+    <div class="mf-toolbar">
+      <button type="button" class="mf-toolbar__btn" data-action="price">Стоимость</button>
+      <button type="button" class="mf-toolbar__btn" data-action="offer">Договор оферта</button>
+      <button type="button" class="mf-toolbar__btn" data-action="policy">Политика данных</button>
+      <button type="button" class="mf-toolbar__btn" data-action="support">Техподдержка</button>
+      <button type="button" class="mf-toolbar__btn" data-action="guide">Инструкция</button>
+      <button type="button" class="mf-toolbar__btn" data-action="example">Пример работы</button>
+    </div>
+
+    <div class="mf-card__body">
+      <!-- Левая колонка: настройки -->
+      <div class="mf-column mf-column--left">
+        <!-- Блок 1: Сценарий -->
+        <section class="mf-section">
+          <h2 class="mf-section__title">1. Сюжет и оформление</h2>
+          <p class="mf-section__hint">Выберите сцену, формат, фон и музыку. Все варианты подгружаются из каталога.</p>
+
+          <div class="mf-field">
+            <label class="mf-label" for="mf-scene">Сюжет</label>
+            <select id="mf-scene" class="mf-select">
+              <option disabled selected>Загрузка...</option>
+            </select>
+          </div>
+
+          <div class="mf-field mf-field--two-cols">
+            <div>
+              <label class="mf-label" for="mf-format">Формат кадра</label>
+              <select id="mf-format" class="mf-select">
+                <option disabled selected>Загрузка...</option>
+              </select>
+            </div>
+            <div>
+              <label class="mf-label" for="mf-background">Фон</label>
+              <select id="mf-background" class="mf-select">
+                <option disabled selected>Загрузка...</option>
+              </select>
+            </div>
+          </div>
+          <p class="mf-subhint">Свой фон сейчас можно загрузить в Telegram-боте. В веб-версии появится позже.</p>
+
+          <div class="mf-field">
+            <label class="mf-label" for="mf-music">Музыка</label>
+            <select id="mf-music" class="mf-select">
+              <option value="">Без музыки</option>
+            </select>
+            <p class="mf-subhint">Свой фон и музыка пока доступны только в Telegram-боте. В веб-версии это появится позже.</p>
+          </div>
+        </section>
+
+        <!-- Блок 2: Фото -->
+        <section class="mf-section">
+          <h2 class="mf-section__title">2. Фото</h2>
+          <p class="mf-section__hint">Загрузите 1–2 вертикальных или крупных портретных фото людей.</p>
+
+          <label class="mf-upload">
+            <input id="mf-photos-input" type="file" multiple accept="image/*" class="mf-upload__input" />
+            <div class="mf-upload__content">
+              <div class="mf-upload__icon">⬆️</div>
+              <div class="mf-upload__title">Нажмите, чтобы выбрать фото</div>
+              <div class="mf-upload__subtitle">Можно выбрать 1–2 файла сразу</div>
+            </div>
+          </label>
+
+          <div id="mf-photos-status" class="mf-photos-status">
+            Фото ещё не загружены
+          </div>
+        </section>
+
+        <!-- Кнопка рендера -->
+        <section class="mf-section mf-section--actions">
+          <button id="mf-render-btn" class="mf-button" disabled>
+            Сгенерировать старт-кадр
+          </button>
+          <p class="mf-section__hint">
+            Кнопка станет активной, когда фото будут успешно загружены.
+          </p>
+          <button id="mf-download-btn" class="mf-button mf-button--ghost" hidden>Скачать видео</button>
+        </section>
+      </div>
+
+      <!-- Правая колонка: статус и предпросмотр -->
+      <div class="mf-column mf-column--right">
+        <section class="mf-section">
+          <h2 class="mf-section__title">Статус рендера</h2>
+
+          <div id="mf-status-text" class="mf-status-text">
+            Заполните настройки слева и загрузите фото, чтобы начать.
+          </div>
+
+          <div class="mf-progress-wrap">
+            <div class="mf-progress-bar">
+              <div id="mf-progress-fill" class="mf-progress-fill" style="width: 0%;"></div>
+            </div>
+            <div id="mf-progress-label" class="mf-progress-label">0%</div>
+          </div>
+        </section>
+
+        <section class="mf-section">
+          <h2 class="mf-section__title">Предпросмотр видео</h2>
+          <div class="mf-video-wrap">
+            <video id="mf-video" class="mf-video" controls preload="metadata">
+              <source id="mf-video-source" src="" type="video/mp4" />
+              Ваш браузер не поддерживает воспроизведение видео.
+            </video>
+            <div id="mf-video-placeholder" class="mf-video-placeholder">
+              Видео появится здесь, когда рендер завершится.
+            </div>
+          </div>
+
+          <div id="mf-video-link" class="mf-video-link" hidden>
+            <a id="mf-video-url-anchor" href="#" target="_blank" rel="noopener">Открыть видео в новой вкладке</a>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Модалки -->
+<div id="mf-modal-overlay" class="mf-modal-overlay" hidden>
+  <div class="mf-modal">
+    <div class="mf-modal__header">
+      <h3 id="mf-modal-title" class="mf-modal__title"></h3>
+      <button type="button" id="mf-modal-close" class="mf-modal__close">×</button>
+    </div>
+    <div id="mf-modal-body" class="mf-modal__body"></div>
+    <div id="mf-modal-actions" class="mf-modal__actions"></div>
+  </div>
+</div>
