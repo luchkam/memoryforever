@@ -946,7 +946,7 @@ def make_start_frame(photo_paths: List[str], framing_key: str, bg_file: str, lay
             if new_target > target_h:
                 P = scale_to_target_effective(cuts[0], new_target)
                 x = (W - P.width) // 2
-                y = place_y_for_floor(P)
+                y = place_y_for_floor(P, virtual_floor_y)
 
         margin = 20
         x = max(margin, min(W - P.width - margin, x))
@@ -961,7 +961,7 @@ def make_start_frame(photo_paths: List[str], framing_key: str, bg_file: str, lay
                 k = 1.0 + max(-0.20, min(0.20, scl / 100.0))
                 nw, nh = max(1, int(P.width * k)), max(1, int(P.height * k))
                 P = P.resize((nw, nh), RESAMPLE.LANCZOS)
-                y = place_y_for_floor(P)
+                y = place_y_for_floor(P, virtual_floor_y)
             if dxl != 0:
                 x += int(-dxl)
             x = max(margin, min(W - P.width - margin, x))
@@ -978,7 +978,7 @@ def make_start_frame(photo_paths: List[str], framing_key: str, bg_file: str, lay
             new_target = min(target_h * 1.04, 0.98)
             newP = scale_to_target_effective(cuts[0], new_target)
             cx = x + P.width // 2
-            cy_floor = place_y_for_floor(newP)
+            cy_floor = place_y_for_floor(newP, virtual_floor_y)
             newx = cx - newP.width // 2
             margin = 20
             newx = max(margin, min(W - newP.width - margin, newx))
@@ -1337,7 +1337,10 @@ def create_memorial_title_image(width, height, fio, dates, mem_text, output_path
     # 1) FIO (верх, по центру)
     fio_box_w = width - 2*pad
     # сдвигаем всё, что «сверху», ниже углового логотипа
-    safe_top = _wm_safe_top_px()
+    try:
+        safe_top = _wm_safe_top_px()
+    except Exception:
+        safe_top = 160
     fio_box_h = int(height * 0.16)
     fio_y0 = top + safe_top
     fio_font, fio_lines, fio_h = _fit_text_in_box(

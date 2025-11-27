@@ -739,5 +739,6 @@ def create_app() -> FastAPI:
 
     app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
     app.mount("/renders", StaticFiles(directory=str(RENDERS_DIR)), name="renders")
+    app.mount("/assets", StaticFiles(directory=str(ROOT / "assets")), name="assets")
 
     return app
