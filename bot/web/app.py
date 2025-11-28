@@ -5,6 +5,8 @@ import io
 import os
 import threading
 import uuid
+import json
+import hashlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -36,6 +38,7 @@ from ..render.pipeline import (
     web_render_video,
     _abs_project_path,
 )
+from ..payment.tochka import create_payment_link, get_payment_status, is_paid_status, TochkaError
 
 ensure_directories()
 Path("renders/temp").mkdir(parents=True, exist_ok=True)
@@ -52,6 +55,7 @@ RENDERS_DIR.mkdir(parents=True, exist_ok=True)
 
 # in-memory store for render jobs
 RENDER_JOBS: Dict[str, Dict[str, Any]] = {}
+PAYMENT_SESSIONS: Dict[str, Dict[str, Any]] = {}
 
 _ALLOWED_ORIGINS = [
     "https://memoryforever.ru",
@@ -128,6 +132,18 @@ class RenderRequest(BaseModel):
     subtitle: Optional[str] = ""
     photos: List[str]
     user: Optional[str] = None
+
+
+class RenderPaidResponse(BaseModel):
+    status: str
+    job_id: Optional[str] = None
+    status_url: Optional[str] = None
+    payment_url: Optional[str] = None
+    payment_id: Optional[str] = None
+    payment_key: Optional[str] = None
+    price_rub: Optional[int] = None
+    result: Optional[Dict[str, Any]] = None
+    message: Optional[str] = None
 
 
 class StartFrameRequest(BaseModel):
@@ -518,10 +534,83 @@ async def support_message(req: SupportRequest):
 
 @router.post("/render/start")
 async def render_start(payload: RenderRequest):
-    job_id = uuid.uuid4().hex
-    RENDER_JOBS[job_id] = {"status": "queued", "photos": payload.photos, "payload": payload.model_dump()}
-    asyncio.create_task(_run_render(job_id, payload))
-    return {"job_id": job_id, "status": "queued", "status_url": f"/v1/render/status/{job_id}"}
+    return await _enqueue_render(payload)
+
+
+@router.post("/render/start_paid", response_model=RenderPaidResponse)
+async def render_start_paid(payload: RenderRequest):
+    price = _scene_price(payload.scene_key)
+
+    if price <= 0:
+        queued = await _enqueue_render(payload)
+        return RenderPaidResponse(status="render_started", **queued)
+
+    payment_key = _payment_key_from_payload(payload)
+    payment = PAYMENT_SESSIONS.get(payment_key)
+
+    if not payment:
+        try:
+            pay_id, pay_url = create_payment_link(price, purpose=f"Memory Forever: {payload.scene_key}")
+        except TochkaError as exc:
+            raise HTTPException(status_code=500, detail=f"Payment create failed: {exc}") from exc
+        payment = {
+            "payment_id": pay_id,
+            "payment_url": pay_url,
+            "status": "need_payment",
+            "price_rub": price,
+            "payload": payload.model_dump(),
+        }
+        PAYMENT_SESSIONS[payment_key] = payment
+        return RenderPaidResponse(
+            status="need_payment",
+            payment_url=pay_url,
+            payment_id=pay_id,
+            payment_key=payment_key,
+            price_rub=price,
+            message="Счёт создан, требуется оплата.",
+        )
+
+    # Если платёж уже существует, проверим статус
+    if payment.get("status") != "paid":
+        try:
+            status_json = get_payment_status(payment["payment_id"])
+            if is_paid_status(status_json):
+                payment["status"] = "paid"
+            else:
+                return RenderPaidResponse(
+                    status="need_payment",
+                    payment_url=payment.get("payment_url"),
+                    payment_id=payment.get("payment_id"),
+                    payment_key=payment_key,
+                    price_rub=price,
+                    message="Платёж не подтверждён. Попробуйте ещё раз через пару секунд.",
+                )
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=f"Payment status failed: {exc}") from exc
+
+    # Оплачено
+    if payment.get("job_id"):
+        job_id = payment["job_id"]
+        job = RENDER_JOBS.get(job_id) or {}
+        if job.get("status") == "done":
+            return RenderPaidResponse(status="done", job_id=job_id, result=job.get("result"), payment_key=payment_key)
+        return RenderPaidResponse(
+            status="render_started",
+            job_id=job_id,
+            status_url=f"/v1/render/status/{job_id}",
+            payment_key=payment_key,
+        )
+
+    queued = await _enqueue_render(payload)
+    payment["job_id"] = queued["job_id"]
+    payment["status"] = "rendering"
+    PAYMENT_SESSIONS[payment_key] = payment
+    return RenderPaidResponse(
+        status="render_started",
+        job_id=queued["job_id"],
+        status_url=queued.get("status_url"),
+        payment_key=payment_key,
+    )
 
 
 @router.get("/render/status/{job_id}")
@@ -723,6 +812,22 @@ def get_result(session_id: str):
     if not result_path or not os.path.isfile(result_path):
         raise HTTPException(status_code=404, detail="Result not ready")
     return FileResponse(result_path, media_type="video/mp4", filename=Path(result_path).name)
+
+def _enqueue_render(payload: RenderRequest) -> Dict[str, Any]:
+    job_id = uuid.uuid4().hex
+    RENDER_JOBS[job_id] = {"status": "queued", "photos": payload.photos, "payload": payload.model_dump()}
+    asyncio.create_task(_run_render(job_id, payload))
+    return {"job_id": job_id, "status": "queued", "status_url": f"/v1/render/status/{job_id}"}
+
+def _scene_price(scene_key: str) -> int:
+    meta = assets.SCENES.get(scene_key) or {}
+    return int(meta.get("price_rub", 0) or 0)
+
+def _payment_key_from_payload(payload: RenderRequest) -> str:
+    base = payload.model_dump()
+    base["photos"] = payload.photos
+    raw = json.dumps(base, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
 def create_app() -> FastAPI:

@@ -5,7 +5,6 @@ const POLL_INTERVAL_MS = 3000;
 const MAX_POLL_ATTEMPTS = 30;
 
 let catalog = null;
-let uploadedPhotos = [];
 let currentJobId = null;
 let pollTimer = null;
 let pollAttempts = 0;
@@ -36,6 +35,11 @@ let modalCloseBtn;
 let modalInitialised = false;
 let videoStatus = 'idle'; // idle | rendering | ready | error
 let videoUrl = null;
+let uploadedPhotoUrls = [];
+let uploadedPhotoNames = [];
+let currentStartFrameUrl = null;
+let sceneMetaMap = {};
+let pendingPayment = null;
 
 const selectedState = {
   sceneKey: '',
@@ -84,24 +88,47 @@ function resetDownload() {
   }
 }
 
+function setupDownload(fullUrl, enabled) {
+  if (!downloadBtn) return;
+  if (!enabled || !fullUrl) {
+    resetDownload();
+    return;
+  }
+  downloadBtn.hidden = false;
+  downloadBtn.onclick = function () {
+    try {
+      const a = document.createElement('a');
+      a.href = fullUrl;
+      a.download = 'memory_forever_video.mp4';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) {
+      window.open(fullUrl, '_blank');
+    }
+  };
+}
+
 function showVideo(url, isFinal) {
   const fullUrl = url.startsWith('http') ? url : API_BASE + url;
 
-  videoSourceEl.src = fullUrl;
+  // показываем видео-плеер
+  videoEl.removeAttribute('hidden');
   videoEl.style.display = 'block';
   videoPlaceholderEl.style.display = 'none';
-  videoEl.load();
+  try {
+    videoEl.src = fullUrl;
+    videoEl.load();
+    videoEl.play().catch(function () {});
+    videoEl.controls = true;
+  } catch (e) {
+    // silent
+  }
 
+  videoSourceEl.src = fullUrl;
   videoUrlAnchorEl.href = fullUrl;
   videoLinkWrapEl.hidden = false;
-  if (downloadBtn) {
-    downloadBtn.hidden = !isFinal;
-    downloadBtn.onclick = isFinal
-      ? function () {
-          window.open(fullUrl, '_blank');
-        }
-      : null;
-  }
+  setupDownload(fullUrl, isFinal);
 }
 
 function showFinalVideo(url) {
@@ -119,6 +146,7 @@ function showExampleVideo(url) {
 function showStartFrame(url) {
   if (!url) return;
   const fullUrl = url.startsWith('http') ? url : API_BASE + url;
+  currentStartFrameUrl = fullUrl;
   if (!startFrameImgEl) {
     startFrameImgEl = document.createElement('img');
     startFrameImgEl.id = 'mf-startframe';
@@ -149,6 +177,7 @@ function resetVideo() {
   }
   videoStatus = 'idle';
   videoUrl = null;
+  currentStartFrameUrl = null;
   resetDownload();
 }
 
@@ -162,17 +191,92 @@ function requiredPhotosCount() {
   return SCENE_PHOTO_RULES[selectedState.sceneKey] || MIN_PHOTOS;
 }
 
-function validateLocalSelection(files) {
+function maxPhotosAllowed() {
+  return SCENE_PHOTO_RULES[selectedState.sceneKey] === 1 ? 1 : MAX_PHOTOS;
+}
+
+function resetToStartFramePhase(reason) {
+  videoStatus = 'idle';
+  videoUrl = null;
+  currentStartFrameUrl = null;
+  pendingPayment = null;
+  renderBtn.textContent = 'Сгенерировать старт-кадр';
+  renderBtn.dataset.mode = 'start';
+  resetDownload();
+  resetVideo();
+  updatePhotosUi();
+
+  const count = uploadedPhotoUrls.length;
   const required = requiredPhotosCount();
-  if (files.length < required) {
-    setPhotosStatus('Для выбранного сюжета нужно ' + required + ' фото.', 'error');
-    return false;
+  if (count === 0) {
+    setStatus('Заполните настройки и загрузите фото для старт-кадра.');
+  } else if (count < required) {
+    setStatus('Добавьте ещё фото для сюжета (' + count + '/' + required + ').');
+  } else {
+    setStatus('Фото загружены. Сгенерируйте старт-кадр.');
   }
-  if (files.length > MAX_PHOTOS) {
-    setPhotosStatus('Можно загрузить только 1–2 фотографии.', 'error');
-    return false;
+
+  if (reason) {
+    safeLog('[MF_WEB] resetToStartFramePhase', reason);
   }
-  return true;
+}
+
+function updatePhotosUi(fileNames) {
+  const count = uploadedPhotoUrls.length;
+  const required = requiredPhotosCount();
+  const maxAllowed = maxPhotosAllowed();
+  let text = '';
+  let variant = null;
+
+  if (count === 0) {
+    text = 'Фото ещё не загружены';
+  } else if (count < required) {
+    text = 'Загружено ' + count + ' фото. Для сюжета нужно ' + required + '.';
+    variant = 'error';
+  } else if (count > maxAllowed) {
+    text = 'Для сюжета допускается максимум ' + maxAllowed + ' фото.';
+    variant = 'error';
+  } else {
+    text = '✅ Фото загружены: ' + count;
+  }
+
+  const namesToShow = uploadedPhotoNames.length ? uploadedPhotoNames : fileNames || [];
+  if (namesToShow && namesToShow.length) {
+    text += '\n' + namesToShow.join('\n');
+  }
+
+  setPhotosStatus(text, variant);
+  enableRenderButton(count >= required);
+}
+
+function updateSelectedState() {
+  selectedState.sceneKey = sceneSelect ? sceneSelect.value : '';
+  selectedState.formatKey = formatSelect ? formatSelect.value : '';
+  selectedState.backgroundKey = backgroundSelect ? backgroundSelect.value : '';
+  selectedState.musicKey = musicSelect ? musicSelect.value : '';
+}
+
+function getSceneMeta(sceneKey) {
+  return sceneMetaMap[sceneKey] || {};
+}
+
+function isPaidScene(sceneKey) {
+  const meta = getSceneMeta(sceneKey || selectedState.sceneKey);
+  return (meta.price_rub || 0) > 0;
+}
+
+function applySceneFormatRules() {
+  if (selectedState.sceneKey === SKY_SCENE_KEY) {
+    lockFormatToTall();
+  } else {
+    unlockFormats();
+  }
+  const maxAllowed = maxPhotosAllowed();
+  if (maxAllowed === 1 && uploadedPhotoUrls.length > 1) {
+    uploadedPhotoUrls = uploadedPhotoUrls.slice(0, 1);
+    uploadedPhotoNames = uploadedPhotoNames.slice(0, 1);
+  }
+  updatePhotosUi();
 }
 
 function ensureElements() {
@@ -181,7 +285,7 @@ function ensureElements() {
   formatSelect = document.getElementById('mf-format');
   backgroundSelect = document.getElementById('mf-background');
   musicSelect = document.getElementById('mf-music');
-  photosInput = document.getElementById('mf-photos-input');
+  photosInput = document.getElementById('mf-photos-input') || document.getElementById('mf-photo-input');
   photosStatusEl = document.getElementById('mf-photos-status');
   renderBtn = document.getElementById('mf-render-btn');
   statusTextEl = document.getElementById('mf-status-text');
@@ -222,6 +326,14 @@ function ensureElements() {
     return false;
   }
 
+  // гарантируем multiple и accept=image/* даже если Creatium что-то подменил
+  try {
+    photosInput.setAttribute('multiple', 'multiple');
+    photosInput.setAttribute('accept', 'image/*');
+  } catch (_e) {
+    /* ignore */
+  }
+
   // Ensure modal closed/cleared on init
   modalOverlay.hidden = true;
   modalTitleEl.textContent = '';
@@ -251,6 +363,11 @@ async function loadCatalog() {
     catalog = await resp.json();
     window.MF_CATALOG = catalog;
     safeLog('[MF_WEB] Каталог получен', catalog);
+
+    sceneMetaMap = {};
+    (catalog.scenes || []).forEach(function (sc) {
+      sceneMetaMap[sc.key] = sc;
+    });
 
     fillSelect(sceneSelect, catalog.scenes || [], { allowEmpty: false });
     fillSelect(formatSelect, catalog.formats || [], { allowEmpty: false });
@@ -305,35 +422,45 @@ function fillSelect(selectEl, items, options) {
 // Фото
 
 async function uploadPhotos(files) {
-  if (!files || files.length === 0) {
+  const newFiles = files || [];
+  const existingCount = uploadedPhotoUrls.length;
+  const maxAllowed = maxPhotosAllowed();
+  const hadMaxPhotos = existingCount >= maxAllowed;
+  const effectiveExisting = hadMaxPhotos ? 0 : existingCount;
+
+  safeLog('[MF_WEB] upload change files', { selected: newFiles.length, existing: existingCount, max: maxAllowed });
+
+  if (!newFiles || newFiles.length === 0) {
     setPhotosStatus('Выберите 1–2 фотографии.', 'error');
-    uploadedPhotos = [];
-    enableRenderButton(false);
-    if (photosInput) {
-      photosInput.value = '';
-    }
+    enableRenderButton(existingCount >= requiredPhotosCount());
+    if (photosInput) photosInput.value = '';
     return;
   }
 
-  if (!validateLocalSelection(files)) {
-    uploadedPhotos = [];
-    enableRenderButton(false);
-    if (photosInput) {
-      photosInput.value = '';
-    }
+  if (existingCount >= maxAllowed) {
+    // Считаем, что пользователь хочет заменить фото
+    uploadedPhotoUrls = [];
+    uploadedPhotoNames = [];
+    existingCount = 0;
+  }
+
+  if (effectiveExisting + newFiles.length > maxAllowed) {
+    const msg = maxAllowed === 1 ? 'Для этого сюжета допускается только 1 фото.' : 'Можно загрузить только 1–2 фотографии.';
+    setPhotosStatus(msg, 'error');
+    if (photosInput) photosInput.value = '';
     return;
   }
 
   const formData = new FormData();
-  for (let i = 0; i < files.length; i++) {
-    formData.append('files', files[i]);
+  for (let i = 0; i < newFiles.length; i++) {
+    formData.append('files', newFiles[i]);
   }
 
   setPhotosStatus('Загружаем фото…', null);
   enableRenderButton(false);
 
   try {
-    safeLog('[MF_WEB] Загружаем фото, файлов', files.length);
+    safeLog('[MF_WEB] Загружаем фото, файлов', newFiles.length);
     const resp = await fetch(API_BASE + '/v1/upload', {
       method: 'POST',
       mode: 'cors',
@@ -358,19 +485,33 @@ async function uploadPhotos(files) {
       throw new Error('Сервер не вернул пути загруженных файлов.');
     }
 
-    uploadedPhotos = data.files;
-    const fileNames = files.map(function (f) {
+    if (hadMaxPhotos) {
+      uploadedPhotoUrls = [];
+      uploadedPhotoNames = [];
+    }
+
+    const spaceLeft = Math.max(0, maxAllowed - uploadedPhotoUrls.length);
+    const added = data.files.slice(0, spaceLeft);
+    uploadedPhotoUrls = uploadedPhotoUrls.concat(added);
+
+    const fileNames = newFiles.map(function (f) {
       return f.name;
-    });
-    setPhotosStatus('✅ Фото загружены: ' + uploadedPhotos.length + '\n' + fileNames.join('\n'), 'success');
-    enableRenderButton(true);
-    setStatus('Фото загружены. Сгенерируйте старт-кадр.');
+    }).slice(0, spaceLeft);
+    uploadedPhotoNames = uploadedPhotoNames.concat(fileNames);
+
+    updatePhotosUi();
+    resetToStartFramePhase('photos-updated');
+    const required = requiredPhotosCount();
+    if (uploadedPhotoUrls.length < required) {
+      setStatus('Добавьте ещё фото для сюжета (' + uploadedPhotoUrls.length + '/' + required + ').');
+    } else {
+      setStatus('Фото загружены. Сгенерируйте старт-кадр.');
+    }
     photosInput.value = '';
   } catch (err) {
     safeLog('[MF_WEB] upload error', err && err.message ? err.message : err);
-    uploadedPhotos = [];
     setPhotosStatus('Ошибка при загрузке фото. Попробуйте ещё раз.', 'error');
-    enableRenderButton(false);
+    enableRenderButton(uploadedPhotoUrls.length >= requiredPhotosCount());
     setStatus('Ошибка при загрузке фото: ' + (err && err.message ? err.message : 'неизвестная ошибка'), 'error');
     photosInput.value = '';
   }
@@ -379,10 +520,13 @@ async function uploadPhotos(files) {
 // Старт-кадр и рендер
 
 async function generateStartFrame() {
-  if (!uploadedPhotos || uploadedPhotos.length === 0) {
-    setStatus('Сначала загрузите фото.', 'error');
+  const required = requiredPhotosCount();
+  if (!uploadedPhotoUrls || uploadedPhotoUrls.length < required) {
+    setStatus('Для выбранного сюжета нужно ' + required + ' фото.', 'error');
     return;
   }
+  updateSelectedState();
+  applySceneFormatRules();
   setStatus('Генерируем старт-кадр…');
   setProgress(10);
   enableRenderButton(false);
@@ -394,17 +538,27 @@ async function generateStartFrame() {
     scene_key: selectedState.sceneKey,
     format_key: selectedState.formatKey,
     background_key: selectedState.backgroundKey,
-    photos: uploadedPhotos
+    photos: uploadedPhotoUrls
   };
 
   try {
+    safeLog('[MF_WEB] start-frame payload', payload);
     const resp = await fetch(API_BASE + '/v1/start-frame', {
       method: 'POST',
+      mode: 'cors',
+      credentials: 'omit',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
     if (!resp.ok) {
-      throw new Error('Ошибка старт-кадра: ' + resp.status);
+      let bodyText = '';
+      try {
+        bodyText = await resp.text();
+      } catch (_e) {
+        bodyText = '<no body>';
+      }
+      const msg = 'HTTP ' + resp.status + ' ' + resp.statusText + ' — ' + bodyText.slice(0, 200);
+      throw new Error(msg);
     }
     const data = await resp.json();
     if (data.start_frame_url) {
@@ -422,26 +576,31 @@ async function generateStartFrame() {
   }
 }
 
-async function startRender() {
+async function startRender(isRetryPayment) {
   if (!catalog) {
     setStatus('Каталог ещё не загружен.', 'error');
     return;
   }
-  if (!uploadedPhotos || uploadedPhotos.length === 0) {
-    setStatus('Сначала загрузите фото.', 'error');
+  const required = requiredPhotosCount();
+  if (!uploadedPhotoUrls || uploadedPhotoUrls.length < required) {
+    setStatus('Для выбранного сюжета нужно ' + required + ' фото.', 'error');
     return;
   }
+  updateSelectedState();
+  applySceneFormatRules();
 
-  const payload = {
+  const basePayload = {
     format_key: selectedState.formatKey,
     scene_key: selectedState.sceneKey,
     background_key: selectedState.backgroundKey,
     music_key: selectedState.musicKey || '',
     title: '',
     subtitle: '',
-    photos: uploadedPhotos,
+    photos: uploadedPhotoUrls,
     user: 'web_' + Date.now()
   };
+
+  const payload = isRetryPayment && pendingPayment && pendingPayment.payload ? pendingPayment.payload : basePayload;
 
   setStatus('Отправляем запрос на рендер…');
   setProgress(5);
@@ -452,9 +611,14 @@ async function startRender() {
   videoStatus = 'rendering';
   videoUrl = null;
 
+  pendingPayment = isRetryPayment && pendingPayment ? pendingPayment : null;
+
   try {
-    const resp = await fetch(API_BASE + '/v1/render/start', {
+    safeLog('[MF_WEB] render-start payload', payload);
+    const resp = await fetch(API_BASE + '/v1/render/start_paid', {
       method: 'POST',
+      mode: 'cors',
+      credentials: 'omit',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
@@ -463,11 +627,34 @@ async function startRender() {
     }
 
     const data = await resp.json();
+
+    if (data.status === 'need_payment') {
+      pendingPayment = {
+        payment_id: data.payment_id,
+        payment_url: data.payment_url,
+        payment_key: data.payment_key,
+        payload: payload
+      };
+      setStatus('Необходима оплата. Откройте платёж и после оплаты нажмите «Проверить».');
+      setProgress(0);
+      enableRenderButton(true);
+      openPaymentModal(data.payment_url, payload);
+      return;
+    }
+
+    if (data.status === 'done' && data.result && data.result.video_url) {
+      setProgress(100);
+      showFinalVideo(data.result.video_url);
+      setStatus('Готово! Видео сгенерировано.');
+      enableRenderButton(true);
+      return;
+    }
+
     currentJobId = data.job_id;
     pollAttempts = 0;
     setStatus('Рендер запущен. Ждём результат…');
     setProgress(10);
-
+    pendingPayment = null;
     pollStatus(currentJobId);
   } catch (err) {
     safeLog('[MF_WEB] Ошибка запуска рендера', err && err.message ? err.message : err);
@@ -587,6 +774,46 @@ function handleEscClose(evt) {
   }
 }
 
+function openPaymentModal(paymentUrl, payload) {
+  const price = (getSceneMeta(payload.scene_key).price_rub || 0);
+  openModal('Оплата сюжета', '', function (actionsEl) {
+    const body = document.createElement('div');
+    body.innerHTML = `<p>Вы выбрали платный сюжет. Стоимость: <b>${price} ₽</b>.</p><p>После оплаты генерация видео начнётся автоматически.</p>`;
+    modalBodyEl.innerHTML = '';
+    modalBodyEl.appendChild(body);
+
+    actionsEl.innerHTML = '';
+    const payBtn = document.createElement('button');
+    payBtn.className = 'mf-button';
+    payBtn.textContent = 'Оплата картой / СБП';
+    payBtn.onclick = function () {
+      if (paymentUrl) {
+        window.open(paymentUrl, '_blank');
+      }
+    };
+
+    const checkBtn = document.createElement('button');
+    checkBtn.className = 'mf-button mf-button--ghost';
+    checkBtn.textContent = 'Я оплатил — проверить';
+    checkBtn.onclick = function () {
+      pendingPayment = pendingPayment || {};
+      pendingPayment.payment_url = paymentUrl;
+      pendingPayment.payload = payload;
+      closeModal();
+      startRender(true);
+    };
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'mf-button mf-button--ghost';
+    cancelBtn.textContent = 'Закрыть';
+    cancelBtn.onclick = closeModal;
+
+    actionsEl.appendChild(payBtn);
+    actionsEl.appendChild(checkBtn);
+    actionsEl.appendChild(cancelBtn);
+  });
+}
+
 function buildSupportModal() {
   const body = document.createElement('div');
   const msgLabel = document.createElement('label');
@@ -619,7 +846,7 @@ function buildSupportModal() {
       alert('Введите сообщение.');
       return;
     }
-    console.log('[MF_WEB] support send start');
+    safeLog('[MF_WEB] support send start');
     try {
       const resp = await fetch(API_BASE + '/v1/support', {
         method: 'POST',
@@ -631,11 +858,11 @@ function buildSupportModal() {
         alert('Ошибка отправки: ' + resp.status + ' ' + t);
         return;
       }
-      console.log('[MF_WEB] support send ok');
+      safeLog('[MF_WEB] support send ok');
       alert('Сообщение отправлено, мы ответим вам в ближайшее время');
       closeModal();
     } catch (err) {
-      console.log('[MF_WEB] support send error', err);
+      safeLog('[MF_WEB] support send error', err && err.message ? err.message : err);
       alert('Ошибка отправки: ' + (err && err.message ? err.message : err));
     }
   };
@@ -662,16 +889,17 @@ function handlePhotosChange(evt) {
   uploadPhotos(files);
 }
 
-function handleSelectChange() {
-  selectedState.sceneKey = sceneSelect.value;
-  selectedState.formatKey = formatSelect.value;
-  selectedState.backgroundKey = backgroundSelect.value;
-  selectedState.musicKey = musicSelect.value;
+function handleSelectChange(evt) {
+  updateSelectedState();
+  applySceneFormatRules();
   if (selectedState.sceneKey === SKY_SCENE_KEY) {
-    lockFormatToTall();
     setStatus('Для сцены «Уходит в небеса» формат фиксирован: «🧍 В рост».');
-  } else {
-    unlockFormats();
+  }
+  const targetId = evt && evt.target ? evt.target.id : '';
+  if (targetId === 'mf-scene' || targetId === 'mf-format' || targetId === 'mf-background') {
+    if (uploadedPhotoUrls.length > 0 || currentStartFrameUrl || videoUrl) {
+      resetToStartFramePhase('selection-changed');
+    }
   }
 }
 
@@ -748,8 +976,7 @@ function init() {
 
   setProgress(0);
   resetVideo();
-  setPhotosStatus('Фото ещё не загружены');
-  enableRenderButton(false);
+  updatePhotosUi();
   renderBtn.textContent = 'Сгенерировать старт-кадр';
   renderBtn.dataset.mode = 'start';
 

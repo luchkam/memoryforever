@@ -20,9 +20,11 @@ SCENES: Dict[str, dict] = {
         "duration": int(item.get("duration", 0)),
         "kind": item.get("kind", ""),
         "people": int(item.get("people", 1)),
+        "price_rub": int(item.get("price_rub", 0)),
     }
     for item in _catalog.get("scenes", [])
 }
+SCENE_PRICES: Dict[str, int] = {k: v.get("price_rub", 0) for k, v in SCENES.items()}
 
 BG_FILES: Dict[str, str] = {item["key"]: item["path"] for item in _catalog.get("backgrounds", [])}
 BACKGROUNDS = BG_FILES
