@@ -132,6 +132,8 @@ class RenderRequest(BaseModel):
     subtitle: Optional[str] = ""
     photos: List[str]
     user: Optional[str] = None
+    payment_key: Optional[str] = None
+    check_payment: bool = False
 
 
 class RenderPaidResponse(BaseModel):
@@ -546,14 +548,18 @@ async def render_start(payload: RenderRequest):
 async def render_start_paid(payload: RenderRequest):
     try:
         price = _scene_price(payload.scene_key)
-        print(f"[WEB_PAID] start_paid request: scene={payload.scene_key} price={price}", flush=True)
+        payment_key = payload.payment_key or _payment_key_from_payload(payload)
+        print(
+            f"[WEB_PAID] start_paid request: scene={payload.scene_key} price={price} "
+            f"check_payment={payload.check_payment} payment_key={payment_key}",
+            flush=True,
+        )
 
         if price <= 0:
             queued = await _enqueue_render(payload)
             print(f"[WEB_PAID] render_started (free): job_id={queued.get('job_id')}", flush=True)
             return RenderPaidResponse(status="render_started", **queued)
 
-        payment_key = _payment_key_from_payload(payload)
         payment = PAYMENT_SESSIONS.get(payment_key)
 
         if not payment:
@@ -570,6 +576,7 @@ async def render_start_paid(payload: RenderRequest):
                 "status": "need_payment",
                 "price_rub": price,
                 "payload": payload.model_dump(),
+                "payment_key": payment_key,
             }
             PAYMENT_SESSIONS[payment_key] = payment
             payment_payload = {"@context": "https://schema.org/Payment", "id": pay_id, "url": pay_url}

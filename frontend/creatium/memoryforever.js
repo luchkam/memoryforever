@@ -40,6 +40,7 @@ let uploadedPhotoNames = [];
 let currentStartFrameUrl = null;
 let sceneMetaMap = {};
 let pendingPayment = null;
+let currentPaymentKey = null;
 
 const selectedState = {
   sceneKey: '',
@@ -594,7 +595,13 @@ async function startRender(isRetryPayment) {
   updateSelectedState();
   applySceneFormatRules();
 
-  const basePayload = {
+  startPaidRender({ checkPayment: !!isRetryPayment });
+}
+
+async function startPaidRender(opts) {
+  const checkPayment = !!(opts && opts.checkPayment);
+
+  const payload = {
     format_key: selectedState.formatKey,
     scene_key: selectedState.sceneKey,
     background_key: selectedState.backgroundKey,
@@ -602,10 +609,10 @@ async function startRender(isRetryPayment) {
     title: '',
     subtitle: '',
     photos: uploadedPhotoUrls,
-    user: 'web_' + Date.now()
+    user: 'web_' + Date.now(),
+    payment_key: currentPaymentKey,
+    check_payment: checkPayment
   };
-
-  const payload = isRetryPayment && pendingPayment && pendingPayment.payload ? pendingPayment.payload : basePayload;
 
   setStatus('Отправляем запрос на рендер…');
   setProgress(5);
@@ -616,7 +623,7 @@ async function startRender(isRetryPayment) {
   videoStatus = 'rendering';
   videoUrl = null;
 
-  pendingPayment = isRetryPayment && pendingPayment ? pendingPayment : null;
+  pendingPayment = checkPayment && pendingPayment ? pendingPayment : null;
 
   window.MF_DEBUG_LOGS.push({ ts: new Date().toISOString(), message: '[MF_WEB] render start_paid → request', details: payload });
   try {
@@ -667,16 +674,22 @@ async function startRender(isRetryPayment) {
         paymentUrl = paymentUrl || paymentObj.paymentLink || paymentObj.url;
       }
 
+      currentPaymentKey = data.payment_key || paymentObj.id || paymentObj.payment_id || currentPaymentKey;
       pendingPayment = {
         payment_id: data.payment_id,
         payment_url: paymentUrl,
         payment_key: data.payment_key,
         payload: payload
       };
+      window.MF_DEBUG_LOGS.push({
+        ts: new Date().toISOString(),
+        message: '[MF_WEB] start_paid need_payment',
+        details: { payment_key: currentPaymentKey, url: paymentUrl }
+      });
       setStatus('Необходима оплата. Откройте платёж и после оплаты нажмите «Проверить».');
       setProgress(0);
       enableRenderButton(true);
-      openPaymentModal(paymentUrl, payload);
+      openPaymentModal({ url: paymentUrl, payload: payload });
       return;
     }
 
@@ -688,12 +701,28 @@ async function startRender(isRetryPayment) {
       return;
     }
 
-    currentJobId = data.job_id;
-    pollAttempts = 0;
-    setStatus('Рендер запущен. Ждём результат…');
-    setProgress(10);
-    pendingPayment = null;
-    pollStatus(currentJobId);
+    if (status === 'render_started') {
+      currentJobId = data.job_id;
+      pollAttempts = 0;
+      setStatus('Рендер запущен. Ждём результат…');
+      setProgress(10);
+      pendingPayment = null;
+      pollStatus(currentJobId);
+      return;
+    }
+
+    if (status === 'pending_payment') {
+      setRenderError('Оплата ещё не найдена. Попробуйте через 5–10 секунд.');
+      enableRenderButton(true);
+      return;
+    }
+
+    if (status === 'error') {
+      setRenderError('Не удалось запустить рендер: ' + (data.message || 'Ошибка сервера'));
+      return;
+    }
+
+    setRenderError('Не удалось запустить рендер: неизвестный статус');
   } catch (err) {
     window.MF_DEBUG_LOGS.push({
       ts: new Date().toISOString(),
@@ -815,8 +844,11 @@ function handleEscClose(evt) {
   }
 }
 
-function openPaymentModal(paymentUrl, payload) {
-  const price = (getSceneMeta(payload.scene_key).price_rub || 0);
+function openPaymentModal(opts) {
+  const paymentUrl = opts && opts.url ? opts.url : '';
+  const payload = opts && opts.payload ? opts.payload : null;
+  const sceneKeyForPrice = payload && payload.scene_key ? payload.scene_key : selectedState.sceneKey;
+  const price = (getSceneMeta(sceneKeyForPrice).price_rub || 0);
   openModal('Оплата сюжета', '', function (actionsEl) {
     const body = document.createElement('div');
     body.innerHTML = `<p>Вы выбрали платный сюжет. Стоимость: <b>${price} ₽</b>.</p><p>После оплаты генерация видео начнётся автоматически.</p>`;
@@ -837,11 +869,12 @@ function openPaymentModal(paymentUrl, payload) {
     checkBtn.className = 'mf-button mf-button--ghost';
     checkBtn.textContent = 'Я оплатил — проверить';
     checkBtn.onclick = function () {
+      window.MF_DEBUG_LOGS.push({ ts: new Date().toISOString(), message: '[MF_WEB] "Я оплатил" clicked' });
       pendingPayment = pendingPayment || {};
       pendingPayment.payment_url = paymentUrl;
-      pendingPayment.payload = payload;
+      pendingPayment.payload = payload || pendingPayment.payload || null;
       closeModal();
-      startRender(true);
+      startPaidRender({ checkPayment: true });
     };
 
     const cancelBtn = document.createElement('button');
@@ -1035,7 +1068,7 @@ function init() {
     if (renderBtn.dataset.mode === 'start') {
       generateStartFrame();
     } else {
-      startRender();
+      startPaidRender({ checkPayment: false });
     }
   });
 
