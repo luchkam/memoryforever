@@ -588,27 +588,28 @@ async def render_start_paid(payload: RenderRequest):
         if payment.get("status") != "paid":
             try:
                 status_json = get_payment_status(payment["payment_id"])
-                if is_paid_status(status_json):
-                    payment["status"] = "paid"
-                else:
-                    pay_url = payment.get("payment_url")
-                    pay_id = payment.get("payment_id")
-                    payment_payload = {"@context": "https://schema.org/Payment", "id": pay_id, "url": pay_url}
-                    print(f"[WEB_PAID] need_payment (pending): payment_id={pay_id} url={pay_url}", flush=True)
-                    return RenderPaidResponse(
-                        status="need_payment",
-                        payment_url=pay_url,
-                        payment_id=pay_id,
-                        payment_key=payment_key,
-                        price_rub=price,
-                        payment=payment_payload,  # type: ignore[arg-type]
-                        message="Платёж не подтверждён. Попробуйте ещё раз через пару секунд.",
-                    )
-        except Exception as exc:  # noqa: BLE001
-            print(f"[WEB_PAID] ERROR payment status: {repr(exc)}", flush=True)
-            return JSONResponse(
-                {"status": "error", "message": "payment_status_failed", "detail": str(exc)}, status_code=500
-            )
+            except Exception as exc:  # noqa: BLE001
+                print(f"[WEB_PAID] ERROR payment status: {repr(exc)}", flush=True)
+                return JSONResponse(
+                    {"status": "error", "message": "payment_status_failed", "detail": str(exc)}, status_code=500
+                )
+
+            if is_paid_status(status_json):
+                payment["status"] = "paid"
+            else:
+                pay_url = payment.get("payment_url")
+                pay_id = payment.get("payment_id")
+                payment_payload = {"@context": "https://schema.org/Payment", "id": pay_id, "url": pay_url}
+                print(f"[WEB_PAID] need_payment (pending): payment_id={pay_id} url={pay_url}", flush=True)
+                return RenderPaidResponse(
+                    status="need_payment",
+                    payment_url=pay_url,
+                    payment_id=pay_id,
+                    payment_key=payment_key,
+                    price_rub=price,
+                    payment=payment_payload,  # type: ignore[arg-type]
+                    message="Платёж не подтверждён. Попробуйте ещё раз через пару секунд.",
+                )
 
         # Оплачено и подтверждено
         if payment.get("status") == "paid" and not payment.get("job_id"):
