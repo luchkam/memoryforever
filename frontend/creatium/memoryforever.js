@@ -71,6 +71,11 @@ function setStatus(text, variant) {
   statusTextEl.classList.toggle('mf-status-text--error', variant === 'error');
 }
 
+function setRenderError(text) {
+  setStatus(text, 'error');
+  enableRenderButton(true);
+}
+
 function setProgress(percent) {
   const v = Math.max(0, Math.min(100, percent));
   progressFillEl.style.width = v + '%';
@@ -578,12 +583,12 @@ async function generateStartFrame() {
 
 async function startRender(isRetryPayment) {
   if (!catalog) {
-    setStatus('Каталог ещё не загружен.', 'error');
+    setRenderError('Каталог ещё не загружен.');
     return;
   }
   const required = requiredPhotosCount();
   if (!uploadedPhotoUrls || uploadedPhotoUrls.length < required) {
-    setStatus('Для выбранного сюжета нужно ' + required + ' фото.', 'error');
+    setRenderError('Для выбранного сюжета нужно ' + required + ' фото.');
     return;
   }
   updateSelectedState();
@@ -613,8 +618,8 @@ async function startRender(isRetryPayment) {
 
   pendingPayment = isRetryPayment && pendingPayment ? pendingPayment : null;
 
+  window.MF_DEBUG_LOGS.push({ ts: new Date().toISOString(), message: '[MF_WEB] render start_paid → request', details: payload });
   try {
-    safeLog('[MF_WEB] render-start payload', payload);
     const resp = await fetch(API_BASE + '/v1/render/start_paid', {
       method: 'POST',
       mode: 'cors',
@@ -623,26 +628,59 @@ async function startRender(isRetryPayment) {
       body: JSON.stringify(payload)
     });
     if (!resp.ok) {
-      throw new Error('Ошибка запуска рендера: ' + resp.status);
+      window.MF_DEBUG_LOGS.push({
+        ts: new Date().toISOString(),
+        message: '[MF_WEB] render start_paid HTTP error',
+        details: { status: resp.status }
+      });
+      setRenderError('Не удалось запустить рендер: HTTP ' + resp.status);
+      return;
     }
 
-    const data = await resp.json();
+    let data;
+    try {
+      data = await resp.json();
+    } catch (e) {
+      window.MF_DEBUG_LOGS.push({
+        ts: new Date().toISOString(),
+        message: '[MF_WEB] render start_paid JSON parse error',
+        details: { error: String(e) }
+      });
+      setRenderError('Не удалось запустить рендер: Load failed');
+      return;
+    }
 
-    if (data.status === 'need_payment') {
+    window.MF_DEBUG_LOGS.push({
+      ts: new Date().toISOString(),
+      message: '[MF_WEB] render start_paid → response',
+      details: data
+    });
+
+    const status = data.status;
+
+    if (status === 'need_payment') {
+      const paymentObj = data.payment || {};
+      const ctxRaw = paymentObj['@context'];
+      const ctx = typeof ctxRaw === 'string' ? ctxRaw.toLowerCase() : null;
+      let paymentUrl = data.payment_url;
+      if (ctx) {
+        paymentUrl = paymentUrl || paymentObj.paymentLink || paymentObj.url;
+      }
+
       pendingPayment = {
         payment_id: data.payment_id,
-        payment_url: data.payment_url,
+        payment_url: paymentUrl,
         payment_key: data.payment_key,
         payload: payload
       };
       setStatus('Необходима оплата. Откройте платёж и после оплаты нажмите «Проверить».');
       setProgress(0);
       enableRenderButton(true);
-      openPaymentModal(data.payment_url, payload);
+      openPaymentModal(paymentUrl, payload);
       return;
     }
 
-    if (data.status === 'done' && data.result && data.result.video_url) {
+    if (status === 'done' && data.result && data.result.video_url) {
       setProgress(100);
       showFinalVideo(data.result.video_url);
       setStatus('Готово! Видео сгенерировано.');
@@ -657,9 +695,12 @@ async function startRender(isRetryPayment) {
     pendingPayment = null;
     pollStatus(currentJobId);
   } catch (err) {
-    safeLog('[MF_WEB] Ошибка запуска рендера', err && err.message ? err.message : err);
-    setStatus('Не удалось запустить рендер: ' + (err && err.message ? err.message : ''), 'error');
-    enableRenderButton(true);
+    window.MF_DEBUG_LOGS.push({
+      ts: new Date().toISOString(),
+      message: '[MF_WEB] render start_paid network error',
+      details: { error: String(err) }
+    });
+    setRenderError('Не удалось запустить рендер: Load failed');
   }
 }
 
