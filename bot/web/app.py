@@ -56,10 +56,12 @@ RENDER_JOBS: Dict[str, Dict[str, Any]] = {}
 _ALLOWED_ORIGINS = [
     "https://memoryforever.ru",
     "https://www.memoryforever.ru",
+    "https://memoryforever.onrender.com",
     "http://localhost:3000",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
+_ALLOWED_ORIGIN_REGEX = r"^https://([a-z0-9-]+\.)?memoryforever\.ru$|^https://.*\.creatium\.app$|^http://localhost(:\d+)?$|^http://127\.0\.0\.1(:\d+)?$"
 
 DEFAULT_TITLE_TEXT = "Memory Forever — Память навсегда с вами"
 
@@ -434,36 +436,39 @@ async def head_catalog():
 
 @router.post("/start-frame")
 async def start_frame(req: StartFrameRequest):
-    scene = assets.SCENES.get(req.scene_key)
-    if not scene:
-        raise HTTPException(status_code=400, detail="Unknown scene_key")
-
-    bg_rel = assets.BG_FILES.get(req.background_key)
-    if not bg_rel:
-        raise HTTPException(status_code=400, detail="Unknown background_key")
-
-    if not req.photos:
-        raise HTTPException(status_code=400, detail="No photos provided")
-
-    abs_photos: List[str] = []
-    for rel in req.photos:
-        rel_path = rel.lstrip("/")
-        abs_path = (BASE_DIR / rel_path).resolve()
-        if not abs_path.exists():
-            raise HTTPException(status_code=400, detail=f"photo not found: {rel}")
-        abs_photos.append(str(abs_path))
-
-    bg_abs = _abs_project_path(bg_rel)
-    if not os.path.isfile(bg_abs):
-        raise HTTPException(status_code=400, detail="Background file not found")
-
     try:
-        start_path, metrics = pipeline_make_start_frame(abs_photos, req.format_key, bg_abs, layout=None)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"start frame failed: {exc}") from exc
+        scene = assets.SCENES.get(req.scene_key)
+        if not scene:
+            raise HTTPException(status_code=400, detail="Unknown scene_key")
 
-    rel_url = "/" + str(Path(start_path).as_posix())
-    return {"start_frame_url": rel_url, "metrics": metrics, "width": 720, "height": 1280}
+        bg_rel = assets.BG_FILES.get(req.background_key)
+        if not bg_rel:
+            raise HTTPException(status_code=400, detail="Unknown background_key")
+
+        if not req.photos:
+            raise HTTPException(status_code=400, detail="No photos provided")
+
+        abs_photos: List[str] = []
+        for rel in req.photos:
+            rel_path = rel.lstrip("/")
+            abs_path = (BASE_DIR / rel_path).resolve()
+            if not abs_path.exists():
+                raise HTTPException(status_code=400, detail=f"photo not found: {rel}")
+            abs_photos.append(str(abs_path))
+
+        bg_abs = _abs_project_path(bg_rel)
+        if not os.path.isfile(bg_abs):
+            raise HTTPException(status_code=400, detail="Background file not found")
+
+        start_path, metrics = pipeline_make_start_frame(abs_photos, req.format_key, bg_abs, layout=None)
+        rel_url = "/" + str(Path(start_path).as_posix())
+        return {"start_frame_url": rel_url, "metrics": metrics, "width": 720, "height": 1280}
+    except HTTPException:
+        # прокидываем как есть, CORS middleware добавит заголовки
+        raise
+    except Exception as exc:  # noqa: BLE001
+        print(f"[WEB] start-frame failed: {exc}")
+        raise HTTPException(status_code=500, detail=f"start frame failed: {exc}") from exc
 
 
 @router.post("/upload")
@@ -482,6 +487,16 @@ async def upload_files(files: List[UploadFile] = File(...)):
         saved_path = save_upload_image_bytes(contents, owner_label="web", ext_hint=ext)
         saved.append("/" + Path(saved_path).as_posix())
     return {"files": saved}
+
+
+@router.options("/start-frame")
+async def options_start_frame():
+    return PlainTextResponse("", status_code=200)
+
+
+@router.options("/render/start")
+async def options_render_start():
+    return PlainTextResponse("", status_code=200)
 
 
 @router.post("/support")
@@ -719,7 +734,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_ALLOWED_ORIGINS,
-        allow_origin_regex=r"^https://.*\.creatium\.app$",
+        allow_origin_regex=_ALLOWED_ORIGIN_REGEX,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
