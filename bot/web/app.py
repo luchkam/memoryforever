@@ -604,12 +604,13 @@ async def render_start_paid(payload: RenderRequest):
             if is_paid_status(status_json):
                 payment["status"] = "paid"
             else:
+                print(f"[WEB_PAID] payment status raw: {status_json}", flush=True)
                 pay_url = payment.get("payment_url")
                 pay_id = payment.get("payment_id")
                 payment_payload = {"@context": "https://schema.org/Payment", "id": pay_id, "url": pay_url}
-                print(f"[WEB_PAID] need_payment (pending): payment_id={pay_id} url={pay_url}", flush=True)
+                print(f"[WEB_PAID] pending_payment: payment_id={pay_id} url={pay_url}", flush=True)
                 return RenderPaidResponse(
-                    status="need_payment",
+                    status="pending_payment",
                     payment_url=pay_url,
                     payment_id=pay_id,
                     payment_key=payment_key,
