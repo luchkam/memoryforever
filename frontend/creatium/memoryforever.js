@@ -845,6 +845,7 @@ function handleEscClose(evt) {
 }
 
 function openPaymentModal(opts) {
+  safeLog('[MF_WEB] openPaymentModal called', { paymentInfo: opts });
   const paymentUrl = opts && opts.url ? opts.url : '';
   const payload = opts && opts.payload ? opts.payload : null;
   const sceneKeyForPrice = payload && payload.scene_key ? payload.scene_key : selectedState.sceneKey;
@@ -859,6 +860,7 @@ function openPaymentModal(opts) {
     const payBtn = document.createElement('button');
     payBtn.className = 'mf-button';
     payBtn.textContent = 'Оплата картой / СБП';
+    payBtn.setAttribute('data-mf-payment-open', '1');
     payBtn.onclick = function () {
       if (paymentUrl) {
         window.open(paymentUrl, '_blank');
@@ -868,8 +870,10 @@ function openPaymentModal(opts) {
     const checkBtn = document.createElement('button');
     checkBtn.className = 'mf-button mf-button--ghost';
     checkBtn.textContent = 'Я оплатил — проверить';
+    checkBtn.setAttribute('data-mf-payment-check', '1');
     checkBtn.onclick = function () {
       window.MF_DEBUG_LOGS.push({ ts: new Date().toISOString(), message: '[MF_WEB] "Я оплатил" clicked' });
+      safeLog('[MF_WEB] payment check button clicked');
       pendingPayment = pendingPayment || {};
       pendingPayment.payment_url = paymentUrl;
       pendingPayment.payload = payload || pendingPayment.payload || null;
@@ -880,6 +884,7 @@ function openPaymentModal(opts) {
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'mf-button mf-button--ghost';
     cancelBtn.textContent = 'Закрыть';
+    cancelBtn.setAttribute('data-mf-payment-close', '1');
     cancelBtn.onclick = closeModal;
 
     actionsEl.appendChild(payBtn);
