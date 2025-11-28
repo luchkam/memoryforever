@@ -515,6 +515,11 @@ async def options_render_start():
     return PlainTextResponse("", status_code=200)
 
 
+@router.options("/render/start_paid")
+async def options_render_start_paid():
+    return PlainTextResponse("", status_code=200)
+
+
 @router.post("/support")
 async def support_message(req: SupportRequest):
     if not req.text or not req.text.strip():
@@ -813,7 +818,7 @@ def get_result(session_id: str):
         raise HTTPException(status_code=404, detail="Result not ready")
     return FileResponse(result_path, media_type="video/mp4", filename=Path(result_path).name)
 
-def _enqueue_render(payload: RenderRequest) -> Dict[str, Any]:
+async def _enqueue_render(payload: RenderRequest) -> Dict[str, Any]:
     job_id = uuid.uuid4().hex
     RENDER_JOBS[job_id] = {"status": "queued", "photos": payload.photos, "payload": payload.model_dump()}
     asyncio.create_task(_run_render(job_id, payload))
