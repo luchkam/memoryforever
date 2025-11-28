@@ -544,78 +544,105 @@ async def render_start(payload: RenderRequest):
 
 @router.post("/render/start_paid", response_model=RenderPaidResponse)
 async def render_start_paid(payload: RenderRequest):
-    price = _scene_price(payload.scene_key)
+    try:
+        price = _scene_price(payload.scene_key)
+        print(f"[WEB_PAID] start_paid request: scene={payload.scene_key} price={price}", flush=True)
 
-    if price <= 0:
-        queued = await _enqueue_render(payload)
-        return RenderPaidResponse(status="render_started", **queued)
+        if price <= 0:
+            queued = await _enqueue_render(payload)
+            print(f"[WEB_PAID] render_started (free): job_id={queued.get('job_id')}", flush=True)
+            return RenderPaidResponse(status="render_started", **queued)
 
-    payment_key = _payment_key_from_payload(payload)
-    payment = PAYMENT_SESSIONS.get(payment_key)
+        payment_key = _payment_key_from_payload(payload)
+        payment = PAYMENT_SESSIONS.get(payment_key)
 
-    if not payment:
-        try:
-            pay_id, pay_url = create_payment_link(price, purpose=f"Memory Forever: {payload.scene_key}")
-        except TochkaError as exc:
-            raise HTTPException(status_code=500, detail=f"Payment create failed: {exc}") from exc
-        payment = {
-            "payment_id": pay_id,
-            "payment_url": pay_url,
-            "status": "need_payment",
-            "price_rub": price,
-            "payload": payload.model_dump(),
-        }
-        PAYMENT_SESSIONS[payment_key] = payment
-        return RenderPaidResponse(
-            status="need_payment",
-            payment_url=pay_url,
-            payment_id=pay_id,
-            payment_key=payment_key,
-            price_rub=price,
-            message="Счёт создан, требуется оплата.",
-        )
-
-    # Если платёж уже существует, проверим статус
-    if payment.get("status") != "paid":
-        try:
-            status_json = get_payment_status(payment["payment_id"])
-            if is_paid_status(status_json):
-                payment["status"] = "paid"
-            else:
-                return RenderPaidResponse(
-                    status="need_payment",
-                    payment_url=payment.get("payment_url"),
-                    payment_id=payment.get("payment_id"),
-                    payment_key=payment_key,
-                    price_rub=price,
-                    message="Платёж не подтверждён. Попробуйте ещё раз через пару секунд.",
+        if not payment:
+            try:
+                pay_id, pay_url = create_payment_link(price, purpose=f"Memory Forever: {payload.scene_key}")
+            except TochkaError as exc:
+                print(f"[WEB_PAID] ERROR create_payment: {repr(exc)}", flush=True)
+                return JSONResponse(
+                    {"status": "error", "message": "payment_create_failed", "detail": str(exc)}, status_code=500
                 )
-        except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=500, detail=f"Payment status failed: {exc}") from exc
+            payment = {
+                "payment_id": pay_id,
+                "payment_url": pay_url,
+                "status": "need_payment",
+                "price_rub": price,
+                "payload": payload.model_dump(),
+            }
+            PAYMENT_SESSIONS[payment_key] = payment
+            payment_payload = {"@context": "https://schema.org/Payment", "id": pay_id, "url": pay_url}
+            print(f"[WEB_PAID] need_payment: payment_id={pay_id} url={pay_url}", flush=True)
+            return RenderPaidResponse(
+                status="need_payment",
+                payment_url=pay_url,
+                payment_id=pay_id,
+                payment_key=payment_key,
+                price_rub=price,
+                payment=payment_payload,  # type: ignore[arg-type]
+                message="Счёт создан, требуется оплата.",
+            )
 
-    # Оплачено
-    if payment.get("job_id"):
-        job_id = payment["job_id"]
-        job = RENDER_JOBS.get(job_id) or {}
-        if job.get("status") == "done":
-            return RenderPaidResponse(status="done", job_id=job_id, result=job.get("result"), payment_key=payment_key)
+        # Если платёж уже существует, проверим статус
+        if payment.get("status") != "paid":
+            try:
+                status_json = get_payment_status(payment["payment_id"])
+                if is_paid_status(status_json):
+                    payment["status"] = "paid"
+                else:
+                    pay_url = payment.get("payment_url")
+                    pay_id = payment.get("payment_id")
+                    payment_payload = {"@context": "https://schema.org/Payment", "id": pay_id, "url": pay_url}
+                    print(f"[WEB_PAID] need_payment (pending): payment_id={pay_id} url={pay_url}", flush=True)
+                    return RenderPaidResponse(
+                        status="need_payment",
+                        payment_url=pay_url,
+                        payment_id=pay_id,
+                        payment_key=payment_key,
+                        price_rub=price,
+                        payment=payment_payload,  # type: ignore[arg-type]
+                        message="Платёж не подтверждён. Попробуйте ещё раз через пару секунд.",
+                    )
+            except Exception as exc:  # noqa: BLE001
+                print(f"[WEB_PAID] ERROR payment status: {repr(exc)}", flush=True)
+                return JSONResponse(
+                    {"status": "error", "message": "payment_status_failed", "detail": str(exc)}, status_code=500
+                )
+
+        # Оплачено
+        if payment.get("job_id"):
+            job_id = payment["job_id"]
+            job = RENDER_JOBS.get(job_id) or {}
+            if job.get("status") == "done":
+                result = job.get("result")
+                print(f"[WEB_PAID] done: job_id={job_id} video_url={(result or {}).get('video_url')}", flush=True)
+                return RenderPaidResponse(status="done", job_id=job_id, result=result, payment_key=payment_key)
+            print(f"[WEB_PAID] render_started (existing): job_id={job_id}", flush=True)
+            return RenderPaidResponse(
+                status="render_started",
+                job_id=job_id,
+                status_url=f"/v1/render/status/{job_id}",
+                payment_key=payment_key,
+            )
+
+        queued = await _enqueue_render(payload)
+        payment["job_id"] = queued["job_id"]
+        payment["status"] = "rendering"
+        PAYMENT_SESSIONS[payment_key] = payment
+        print(f"[WEB_PAID] render_started: job_id={queued.get('job_id')}", flush=True)
         return RenderPaidResponse(
             status="render_started",
-            job_id=job_id,
-            status_url=f"/v1/render/status/{job_id}",
+            job_id=queued["job_id"],
+            status_url=queued.get("status_url"),
             payment_key=payment_key,
         )
-
-    queued = await _enqueue_render(payload)
-    payment["job_id"] = queued["job_id"]
-    payment["status"] = "rendering"
-    PAYMENT_SESSIONS[payment_key] = payment
-    return RenderPaidResponse(
-        status="render_started",
-        job_id=queued["job_id"],
-        status_url=queued.get("status_url"),
-        payment_key=payment_key,
-    )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[WEB_PAID] ERROR start_paid: {repr(exc)}", flush=True)
+        return JSONResponse(
+            {"status": "error", "message": "internal_error", "detail": str(exc)},
+            status_code=500,
+        )
 
 
 @router.get("/render/status/{job_id}")
