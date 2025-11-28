@@ -604,13 +604,27 @@ async def render_start_paid(payload: RenderRequest):
                         payment=payment_payload,  # type: ignore[arg-type]
                         message="Платёж не подтверждён. Попробуйте ещё раз через пару секунд.",
                     )
-            except Exception as exc:  # noqa: BLE001
-                print(f"[WEB_PAID] ERROR payment status: {repr(exc)}", flush=True)
-                return JSONResponse(
-                    {"status": "error", "message": "payment_status_failed", "detail": str(exc)}, status_code=500
-                )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[WEB_PAID] ERROR payment status: {repr(exc)}", flush=True)
+            return JSONResponse(
+                {"status": "error", "message": "payment_status_failed", "detail": str(exc)}, status_code=500
+            )
 
-        # Оплачено
+        # Оплачено и подтверждено
+        if payment.get("status") == "paid" and not payment.get("job_id"):
+            queued = await _enqueue_render(payload)
+            payment["job_id"] = queued["job_id"]
+            payment["status"] = "rendering"
+            PAYMENT_SESSIONS[payment_key] = payment
+            print(f"[WEB_PAID] Payment confirmed → starting render for job_id={queued.get('job_id')}", flush=True)
+            return RenderPaidResponse(
+                status="render_started",
+                job_id=queued["job_id"],
+                status_url=queued.get("status_url"),
+                payment_key=payment_key,
+            )
+
+        # Оплачено (возможно, рендер уже запускался)
         if payment.get("job_id"):
             job_id = payment["job_id"]
             job = RENDER_JOBS.get(job_id) or {}
