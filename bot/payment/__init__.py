@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import asyncio
 import os
 import threading
 import time
@@ -129,34 +130,44 @@ def start_auto_check_payment(
     period_sec: int = 10,
     max_checks: int = 12,
 ) -> None:
+    """
+    Поддерживаем старое API, но делегируем фактическое ожидание в async helper ниже.
+    """
     def _worker():
         try:
-            for _ in range(max_checks):
-                st = state.users.setdefault(uid, state.new_state())
-                if not st.get("await_payment"):
-                    return
-                if st.get("payment_op_id") != op_id:
-                    return
-
-                try:
-                    resp = tochka.get_payment_status(op_id)
-                except Exception as exc:
-                    print(f"[PAY] auto-check err: {exc}")
-                    time.sleep(period_sec)
-                    continue
-
-                if tochka.is_paid_status(resp):
-                    st["payment_confirmed"] = True
-                    st["await_payment"] = False
-                    bot.send_message(uid, "✅ Оплата получена. Запускаю генерацию.")
-                    on_paid(uid, st)
-                    return
-
-                time.sleep(period_sec)
+            resp = asyncio.run(wait_for_tochka_payment(op_id, timeout=period_sec * max_checks, poll_interval=period_sec))
+            st = state.users.setdefault(uid, state.new_state())
+            if not resp:
+                return
+            st["payment_confirmed"] = True
+            st["await_payment"] = False
+            bot.send_message(uid, "✅ Оплата получена. Запускаю генерацию.")
+            on_paid(uid, st)
         except Exception as exc:
             print(f"[PAY] auto-check thread crash: {exc}")
 
     threading.Thread(target=_worker, daemon=True).start()
+
+
+async def wait_for_tochka_payment(
+    payment_uid: str,
+    *,
+    timeout: int = 600,
+    poll_interval: int = 5,
+) -> dict | None:
+    """
+    Периодически опрашивает Точку и возвращает финальный ответ при оплате, либо None по таймауту/ошибке.
+    """
+    started = time.time()
+    while time.time() - started < timeout:
+        try:
+            resp = tochka.get_payment_status(payment_uid)
+            if tochka.is_paid_status(resp):
+                return resp
+        except Exception as exc:
+            print(f"[PAY] wait_for_tochka_payment error: {exc}")
+        await asyncio.sleep(poll_interval)
+    return None
 
 
 __all__ = [
@@ -166,4 +177,5 @@ __all__ = [
     "start_auto_check_payment",
     "tochka_link_keyboard",
     "stars_amount_for_state",
+    "wait_for_tochka_payment",
 ]
