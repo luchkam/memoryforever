@@ -40,6 +40,7 @@ let uploadedPhotoNames = [];
 let currentStartFrameUrl = null;
 let sceneMetaMap = {};
 let pendingPayment = null;
+let paymentStatusTimer = null;
 
 const selectedState = {
   sceneKey: '',
@@ -702,6 +703,15 @@ async function startPaidRender() {
       return;
     }
 
+    if (status === 'pending_payment') {
+      if (data.payment_key) {
+        startPaymentStatusPolling(data.payment_key);
+      }
+      setStatus('Оплата ещё не подтверждена. После оплаты рендер стартует автоматически.');
+      enableRenderButton(true);
+      return;
+    }
+
     if (status === 'error') {
       setRenderError('Не удалось запустить рендер: ' + (data.message || 'Ошибка сервера'));
       return;
@@ -724,6 +734,10 @@ function clearPollTimer() {
   if (pollTimer) {
     clearTimeout(pollTimer);
     pollTimer = null;
+  }
+  if (paymentStatusTimer) {
+    clearTimeout(paymentStatusTimer);
+    paymentStatusTimer = null;
   }
 }
 
@@ -790,6 +804,40 @@ async function pollStatus(jobId) {
     setStatus('Ошибка при получении статуса: ' + (err && err.message ? err.message : ''), 'error');
     enableRenderButton(true);
   }
+}
+
+function startPaymentStatusPolling(paymentKey) {
+  if (!paymentKey) return;
+  const poll = async function () {
+    try {
+      const resp = await fetch(API_BASE + '/v1/render/status_by_payment/' + paymentKey);
+      if (!resp.ok) {
+        paymentStatusTimer = setTimeout(function () {
+          poll();
+        }, POLL_INTERVAL_MS);
+        return;
+      }
+      const data = await resp.json();
+      if (data.status === 'render_started' && data.job_id) {
+        pollStatus(data.job_id);
+        return;
+      }
+      if (data.status === 'done' && data.result && data.result.video_url && data.job_id) {
+        showFinalVideo(data.result.video_url);
+        setStatus('Готово! Видео сгенерировано.');
+        enableRenderButton(true);
+        return;
+      }
+      paymentStatusTimer = setTimeout(function () {
+        poll();
+      }, POLL_INTERVAL_MS);
+    } catch (_e) {
+      paymentStatusTimer = setTimeout(function () {
+        poll();
+      }, POLL_INTERVAL_MS);
+    }
+  };
+  poll();
 }
 
 // Модалки

@@ -58,6 +58,7 @@ RENDERS_DIR.mkdir(parents=True, exist_ok=True)
 RENDER_JOBS: Dict[str, Dict[str, Any]] = {}
 PAYMENT_SESSIONS: Dict[str, Dict[str, Any]] = {}
 PAYMENT_TASKS: Dict[str, asyncio.Task] = {}
+PAYMENT_TO_JOB: Dict[str, str] = {}
 
 _ALLOWED_ORIGINS = [
     "https://memoryforever.ru",
@@ -654,6 +655,7 @@ async def render_start_paid(payload: RenderRequest):
         payment["job_id"] = queued["job_id"]
         payment["status"] = "rendering"
         PAYMENT_SESSIONS[payment_key] = payment
+        PAYMENT_TO_JOB[payment_key] = queued["job_id"]
         print(f"[WEB_PAID] render_started: job_id={queued.get('job_id')}", flush=True)
         return RenderPaidResponse(
             status="render_started",
@@ -693,6 +695,7 @@ async def _auto_render_after_payment(payment_key: str) -> None:
         payment["job_id"] = queued["job_id"]
         payment["status"] = "rendering"
         PAYMENT_SESSIONS[payment_key] = payment
+        PAYMENT_TO_JOB[payment_key] = queued["job_id"]
         print(f"[WEB_PAID] auto-poll render_started: job_id={queued.get('job_id')} key={payment_key}", flush=True)
     except Exception as exc:  # noqa: BLE001
         print(f"[WEB_PAID] auto-poll error: {exc}", flush=True)
@@ -704,6 +707,31 @@ async def render_status(job_id: str):
     if not data:
         return JSONResponse({"error": "not found"}, status_code=404)
     return data
+
+
+@router.get("/render/status_by_payment/{payment_key}")
+async def render_status_by_payment(payment_key: str):
+    payment = PAYMENT_SESSIONS.get(payment_key)
+    if not payment:
+        return JSONResponse({"error": "not found"}, status_code=404)
+
+    job_id = payment.get("job_id") or PAYMENT_TO_JOB.get(payment_key)
+    if job_id:
+        job = RENDER_JOBS.get(job_id)
+        if job:
+            return {
+                "status": job.get("status"),
+                "job_id": job_id,
+                "status_url": f"/v1/render/status/{job_id}",
+                "result": job.get("result"),
+            }
+
+    return {
+        "status": payment.get("status"),
+        "payment_url": payment.get("payment_url"),
+        "payment_id": payment.get("payment_id"),
+        "payment_key": payment_key,
+    }
 
 
 async def _run_render(job_id: str, payload: RenderRequest) -> None:
