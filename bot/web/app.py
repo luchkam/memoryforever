@@ -39,6 +39,7 @@ from ..render.pipeline import (
     _abs_project_path,
 )
 from ..payment.tochka import create_payment_link, get_payment_status, is_paid_status, TochkaError
+from ..payment import wait_for_tochka_payment
 
 ensure_directories()
 Path("renders/temp").mkdir(parents=True, exist_ok=True)
@@ -56,6 +57,7 @@ RENDERS_DIR.mkdir(parents=True, exist_ok=True)
 # in-memory store for render jobs
 RENDER_JOBS: Dict[str, Dict[str, Any]] = {}
 PAYMENT_SESSIONS: Dict[str, Dict[str, Any]] = {}
+PAYMENT_TASKS: Dict[str, asyncio.Task] = {}
 
 _ALLOWED_ORIGINS = [
     "https://memoryforever.ru",
@@ -132,8 +134,6 @@ class RenderRequest(BaseModel):
     subtitle: Optional[str] = ""
     photos: List[str]
     user: Optional[str] = None
-    payment_key: Optional[str] = None
-    check_payment: bool = False
 
 
 class RenderPaidResponse(BaseModel):
@@ -548,12 +548,8 @@ async def render_start(payload: RenderRequest):
 async def render_start_paid(payload: RenderRequest):
     try:
         price = _scene_price(payload.scene_key)
-        payment_key = payload.payment_key or _payment_key_from_payload(payload)
-        print(
-            f"[WEB_PAID] start_paid request: scene={payload.scene_key} price={price} "
-            f"check_payment={payload.check_payment} payment_key={payment_key}",
-            flush=True,
-        )
+        payment_key = _payment_key_from_payload(payload)
+        print(f"[WEB_PAID] start_paid request: scene={payload.scene_key} price={price} payment_key={payment_key}", flush=True)
 
         if price <= 0:
             queued = await _enqueue_render(payload)
@@ -579,6 +575,8 @@ async def render_start_paid(payload: RenderRequest):
                 "payment_key": payment_key,
             }
             PAYMENT_SESSIONS[payment_key] = payment
+            if payment_key not in PAYMENT_TASKS:
+                PAYMENT_TASKS[payment_key] = asyncio.create_task(_auto_render_after_payment(payment_key))
             payment_payload = {"@context": "https://schema.org/Payment", "id": pay_id, "url": pay_url}
             print(f"[WEB_PAID] need_payment: payment_id={pay_id} url={pay_url}", flush=True)
             return RenderPaidResponse(
@@ -590,6 +588,9 @@ async def render_start_paid(payload: RenderRequest):
                 payment=payment_payload,  # type: ignore[arg-type]
                 message="Счёт создан, требуется оплата.",
             )
+
+        if payment_key not in PAYMENT_TASKS:
+            PAYMENT_TASKS[payment_key] = asyncio.create_task(_auto_render_after_payment(payment_key))
 
         # Если платёж уже существует, проверим статус
         if payment.get("status") != "paid":
@@ -666,6 +667,35 @@ async def render_start_paid(payload: RenderRequest):
             {"status": "error", "message": "internal_error", "detail": str(exc)},
             status_code=500,
         )
+
+
+async def _auto_render_after_payment(payment_key: str) -> None:
+    payment = PAYMENT_SESSIONS.get(payment_key)
+    if not payment:
+        return
+    pay_id = payment.get("payment_id")
+    if not pay_id:
+        return
+    try:
+        print(f"[WEB_PAID] auto-poll start: key={payment_key} pay_id={pay_id}", flush=True)
+        resp = await wait_for_tochka_payment(pay_id, timeout=900, poll_interval=5)
+        if not resp:
+            print(f"[WEB_PAID] auto-poll timeout: key={payment_key}", flush=True)
+            return
+        payment["status"] = "paid"
+        payload_dict = payment.get("payload") or {}
+        try:
+            payload_obj = RenderRequest(**payload_dict)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[WEB_PAID] auto-poll payload error: {exc}", flush=True)
+            return
+        queued = await _enqueue_render(payload_obj)
+        payment["job_id"] = queued["job_id"]
+        payment["status"] = "rendering"
+        PAYMENT_SESSIONS[payment_key] = payment
+        print(f"[WEB_PAID] auto-poll render_started: job_id={queued.get('job_id')} key={payment_key}", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[WEB_PAID] auto-poll error: {exc}", flush=True)
 
 
 @router.get("/render/status/{job_id}")

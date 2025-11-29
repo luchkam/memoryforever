@@ -40,7 +40,6 @@ let uploadedPhotoNames = [];
 let currentStartFrameUrl = null;
 let sceneMetaMap = {};
 let pendingPayment = null;
-let currentPaymentKey = null;
 
 const selectedState = {
   sceneKey: '',
@@ -582,7 +581,7 @@ async function generateStartFrame() {
   }
 }
 
-async function startRender(isRetryPayment) {
+async function startRender() {
   if (!catalog) {
     setRenderError('Каталог ещё не загружен.');
     return;
@@ -595,11 +594,10 @@ async function startRender(isRetryPayment) {
   updateSelectedState();
   applySceneFormatRules();
 
-  startPaidRender({ checkPayment: !!isRetryPayment });
+  startPaidRender();
 }
 
-async function startPaidRender(opts) {
-  const checkPayment = !!(opts && opts.checkPayment);
+async function startPaidRender() {
 
   const payload = {
     format_key: selectedState.formatKey,
@@ -609,9 +607,7 @@ async function startPaidRender(opts) {
     title: '',
     subtitle: '',
     photos: uploadedPhotoUrls,
-    user: 'web_' + Date.now(),
-    payment_key: currentPaymentKey,
-    check_payment: checkPayment
+    user: 'web_' + Date.now()
   };
 
   setStatus('Отправляем запрос на рендер…');
@@ -623,7 +619,7 @@ async function startPaidRender(opts) {
   videoStatus = 'rendering';
   videoUrl = null;
 
-  pendingPayment = checkPayment && pendingPayment ? pendingPayment : null;
+  pendingPayment = null;
 
   window.MF_DEBUG_LOGS.push({ ts: new Date().toISOString(), message: '[MF_WEB] render start_paid → request', details: payload });
   try {
@@ -669,27 +665,22 @@ async function startPaidRender(opts) {
       const paymentObj = data.payment || {};
       const ctxRaw = paymentObj['@context'];
       const ctx = typeof ctxRaw === 'string' ? ctxRaw.toLowerCase() : null;
-      let paymentUrl = data.payment_url;
+      let paymentUrl = data.payment_url || paymentObj.url || paymentObj.paymentLink || '';
       if (ctx) {
         paymentUrl = paymentUrl || paymentObj.paymentLink || paymentObj.url;
       }
 
-      currentPaymentKey = data.payment_key || paymentObj.id || paymentObj.payment_id || currentPaymentKey;
-      pendingPayment = {
-        payment_id: data.payment_id,
-        payment_url: paymentUrl,
-        payment_key: data.payment_key,
-        payload: payload
-      };
       window.MF_DEBUG_LOGS.push({
         ts: new Date().toISOString(),
         message: '[MF_WEB] start_paid need_payment',
-        details: { payment_key: currentPaymentKey, url: paymentUrl }
+        details: { payment_key: data.payment_key, url: paymentUrl }
       });
-      setStatus('Необходима оплата. Откройте платёж и после оплаты нажмите «Проверить».');
+      if (paymentUrl) {
+        window.open(paymentUrl, '_blank');
+      }
+      setStatus('Оплата создана. После оплаты видео начнёт рендериться автоматически.', null);
       setProgress(0);
       enableRenderButton(true);
-      openPaymentModal({ url: paymentUrl, payload: payload });
       return;
     }
 
@@ -708,12 +699,6 @@ async function startPaidRender(opts) {
       setProgress(10);
       pendingPayment = null;
       pollStatus(currentJobId);
-      return;
-    }
-
-    if (status === 'pending_payment') {
-      setRenderError('Оплата ещё не найдена. Попробуйте через 5–10 секунд.');
-      enableRenderButton(true);
       return;
     }
 
@@ -867,20 +852,6 @@ function openPaymentModal(opts) {
       }
     };
 
-    const checkBtn = document.createElement('button');
-    checkBtn.className = 'mf-button mf-button--ghost';
-    checkBtn.textContent = 'Я оплатил — проверить';
-    checkBtn.setAttribute('data-mf-payment-check', '1');
-    checkBtn.onclick = function () {
-      window.MF_DEBUG_LOGS.push({ ts: new Date().toISOString(), message: '[MF_WEB] "Я оплатил" clicked' });
-      safeLog('[MF_WEB] payment check button clicked');
-      pendingPayment = pendingPayment || {};
-      pendingPayment.payment_url = paymentUrl;
-      pendingPayment.payload = payload || pendingPayment.payload || null;
-      closeModal();
-      startPaidRender({ checkPayment: true });
-    };
-
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'mf-button mf-button--ghost';
     cancelBtn.textContent = 'Закрыть';
@@ -888,7 +859,6 @@ function openPaymentModal(opts) {
     cancelBtn.onclick = closeModal;
 
     actionsEl.appendChild(payBtn);
-    actionsEl.appendChild(checkBtn);
     actionsEl.appendChild(cancelBtn);
   });
 }
