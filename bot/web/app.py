@@ -682,7 +682,10 @@ async def _auto_render_after_payment(payment_key: str) -> None:
         print(f"[WEB_PAID] auto-poll start: key={payment_key} pay_id={pay_id}", flush=True)
         resp = await wait_for_tochka_payment(pay_id, timeout=900, poll_interval=5)
         if not resp:
-            print(f"[WEB_PAID] auto-poll timeout: key={payment_key}", flush=True)
+            print(
+                f"[WEB_PAID] auto-poll timeout: key={payment_key} pay_id={pay_id} last_status={payment.get('status')}",
+                flush=True,
+            )
             return
         payment["status"] = "paid"
         payload_dict = payment.get("payload") or {}

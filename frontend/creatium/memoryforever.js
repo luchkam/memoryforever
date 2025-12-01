@@ -83,6 +83,13 @@ function setProgress(percent) {
   progressLabelEl.textContent = v + '%';
 }
 
+function updateRenderProgress(percent, message) {
+  if (typeof message === 'string') {
+    setStatus(message);
+  }
+  setProgress(percent);
+}
+
 function enableRenderButton(enabled) {
   renderBtn.disabled = !enabled;
 }
@@ -106,6 +113,7 @@ function setupDownload(fullUrl, enabled) {
       const a = document.createElement('a');
       a.href = fullUrl;
       a.download = 'memory_forever_video.mp4';
+      a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -611,8 +619,7 @@ async function startPaidRender() {
     user: 'web_' + Date.now()
   };
 
-  setStatus('Отправляем запрос на рендер…');
-  setProgress(5);
+  updateRenderProgress(5, 'Отправляем запрос на рендер…');
   enableRenderButton(false);
   clearPollTimer();
   resetVideo();
@@ -676,12 +683,19 @@ async function startPaidRender() {
         message: '[MF_WEB] start_paid need_payment',
         details: { payment_key: data.payment_key, url: paymentUrl }
       });
-      if (paymentUrl) {
-        window.open(paymentUrl, '_blank');
-      }
-      setStatus('Оплата создана. После оплаты видео начнёт рендериться автоматически.', null);
-      setProgress(0);
+      pendingPayment = {
+        payment_url: paymentUrl,
+        payment_id: data.payment_id || paymentObj.id || null,
+        payment_key: data.payment_key || null,
+        payload: payload
+      };
+
+      openPaymentModal({ url: paymentUrl, payload: payload });
+      updateRenderProgress(0, 'Оплата создана. После оплаты видео начнётся автоматически.');
       enableRenderButton(true);
+      if (data.payment_key) {
+        startPaymentStatusPolling(data.payment_key);
+      }
       return;
     }
 
@@ -765,8 +779,8 @@ async function pollStatus(jobId) {
         showStartFrame(data.start_frame_url);
       }
       const p = typeof data.progress === 'number' ? data.progress : 50;
-      setProgress(p);
-      setStatus('Идёт рендер… (' + p + '%)');
+      const capped = Math.min(80, Math.max(p, 10));
+      updateRenderProgress(capped, 'Идёт рендер… (' + p + '%)');
 
       pollTimer = setTimeout(function () {
         pollStatus(jobId);
@@ -775,8 +789,7 @@ async function pollStatus(jobId) {
     }
 
     if (data.status === 'done') {
-      setProgress(100);
-      setStatus('Готово! Видео сгенерировано.');
+      updateRenderProgress(100, 'Готово! Видео сгенерировано.');
       if (data.result && data.result.start_frame_url) {
         showStartFrame(data.result.start_frame_url);
       }
@@ -819,15 +832,17 @@ function startPaymentStatusPolling(paymentKey) {
       }
       const data = await resp.json();
       if (data.status === 'render_started' && data.job_id) {
+        updateRenderProgress(40, 'Видео отправлено в генерацию…');
         pollStatus(data.job_id);
         return;
       }
       if (data.status === 'done' && data.result && data.result.video_url && data.job_id) {
         showFinalVideo(data.result.video_url);
-        setStatus('Готово! Видео сгенерировано.');
+        updateRenderProgress(100, 'Готово! Видео сгенерировано.');
         enableRenderButton(true);
         return;
       }
+      updateRenderProgress(10, 'Ожидаем подтверждение оплаты…');
       paymentStatusTimer = setTimeout(function () {
         poll();
       }, POLL_INTERVAL_MS);
@@ -1091,7 +1106,7 @@ function init() {
     if (renderBtn.dataset.mode === 'start') {
       generateStartFrame();
     } else {
-      startPaidRender({ checkPayment: false });
+      startPaidRender();
     }
   });
 
