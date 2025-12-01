@@ -564,7 +564,17 @@ async def render_start_paid(payload: RenderRequest):
         if price <= 0:
             queued = await _enqueue_render(payload)
             print(f"[WEB_PAID] render_started (free): job_id={queued.get('job_id')}", flush=True)
-            return RenderPaidResponse(status="render_started", **queued)
+            job_id = queued.get("job_id")
+            status_url = queued.get("status_url")
+            return RenderPaidResponse(
+                status="render_started",
+                job_id=job_id,
+                status_url=status_url,
+                payment_url=None,
+                payment_id=None,
+                payment_key=None,
+                price_rub=price,
+            )
 
         payment = PAYMENT_SESSIONS.get(payment_key)
 
