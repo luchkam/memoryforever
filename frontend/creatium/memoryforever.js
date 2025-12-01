@@ -44,6 +44,7 @@ let paymentStatusTimer = null;
 let lastJobId = null;
 let lastResultUrl = null;
 let webUserId = null;
+let selectedLocalFiles = [];
 
 const selectedState = {
   sceneKey: '',
@@ -463,7 +464,7 @@ function fillSelect(selectEl, items, options) {
 // Фото
 
 async function uploadPhotos(files) {
-  const newFiles = files || [];
+  const newFiles = (files || []).slice();
   const existingCount = uploadedPhotoUrls.length;
   const maxAllowed = maxPhotosAllowed();
   const hadMaxPhotos = existingCount >= maxAllowed;
@@ -738,10 +739,27 @@ async function startPaidRender() {
     }
 
     if (status === 'done' && data.result && data.result.video_url) {
-      setProgress(100);
-      showFinalVideo(data.result.video_url);
-      setStatus('Готово! Видео сгенерировано.');
+      updateRenderProgress(100, 'Готово! Видео сгенерировано.');
+      if (data.result && data.result.start_frame_url) {
+        showStartFrame(data.result.start_frame_url);
+      }
+      if (data.result && data.result.video_url) {
+        showFinalVideo(data.result.video_url);
+        lastResultUrl = data.result.video_url;
+        lastJobId = currentJobId || lastJobId;
+      }
+      uploadedPhotoUrls = [];
+      uploadedPhotoNames = [];
+      selectedLocalFiles = [];
+      if (photosInput) {
+        try {
+          photosInput.value = '';
+        } catch (_e) {}
+      }
+      updatePhotosUi();
       enableRenderButton(true);
+      renderBtn.textContent = 'Сделать видео';
+      renderBtn.dataset.mode = 'render';
       return;
     }
 
@@ -1037,8 +1055,8 @@ function openExampleVideo() {
 // События
 
 function handlePhotosChange(evt) {
-  const files = evt.target.files ? Array.from(evt.target.files) : [];
-  uploadPhotos(files);
+  selectedLocalFiles = evt.target.files ? Array.from(evt.target.files) : [];
+  uploadPhotos(selectedLocalFiles.slice());
 }
 
 function handleSelectChange(evt) {
