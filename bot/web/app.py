@@ -362,6 +362,15 @@ def _generate_scene_segment(session: Dict[str, Any], job: Dict[str, Any]) -> str
     seg_path = Path("renders") / f"web_{uid}_{timestamp}_{uuid.uuid4().hex}.mp4"
     download(url, str(seg_path))
 
+    free_used = state.get_free_hugs_count(uid)
+    allowed = not (
+        scene_key == FREE_HUGS_SCENE and free_used >= FREE_HUGS_LIMIT and not state.is_free_hugs_whitelisted(uid)
+    )
+    print(
+        f"[FREE_LIMIT] user={uid} source=web free_used={free_used} allowed={allowed} reason=render_scene",
+        flush=True,
+    )
+
     if state.is_free_hugs(scene_key) and state.is_free_hugs_whitelisted(uid) is False:
         apply_fullscreen_watermark(
             in_video=str(seg_path),
@@ -712,6 +721,18 @@ async def render_status(job_id: str):
     return data
 
 
+@router.get("/render/download/{job_id}")
+async def download_render(job_id: str):
+    job = RENDER_JOBS.get(job_id)
+    if not job:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    file_path = job.get("file_path")
+    if not file_path or not os.path.isfile(file_path):
+        return JSONResponse({"error": "not found"}, status_code=404)
+    filename = job.get("download_name") or "memoryforever_video.mp4"
+    return FileResponse(file_path, media_type="video/mp4", filename=filename)
+
+
 @router.get("/render/status_by_payment/{payment_key}")
 async def render_status_by_payment(payment_key: str):
     payment = PAYMENT_SESSIONS.get(payment_key)
@@ -776,6 +797,8 @@ async def _run_render(job_id: str, payload: RenderRequest) -> None:
             "video_path": video_path,
             "video_url": f"/renders/{Path(video_path).name}",
         }
+        job["file_path"] = str(Path(video_path).resolve())
+        job["download_name"] = "memoryforever_video.mp4"
         RENDER_JOBS[job_id] = job
         print(f"[WEB_DEBUG] job {job_id} completed: {video_path}")
 

@@ -41,6 +41,8 @@ let currentStartFrameUrl = null;
 let sceneMetaMap = {};
 let pendingPayment = null;
 let paymentStatusTimer = null;
+let lastJobId = null;
+let lastResultUrl = null;
 
 const selectedState = {
   sceneKey: '',
@@ -110,15 +112,16 @@ function setupDownload(fullUrl, enabled) {
   downloadBtn.hidden = false;
   downloadBtn.onclick = function () {
     try {
+      const downloadHref = lastJobId ? API_BASE + '/v1/render/download/' + lastJobId : fullUrl;
       const a = document.createElement('a');
-      a.href = fullUrl;
+      a.href = downloadHref;
       a.download = 'memory_forever_video.mp4';
       a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
     } catch (e) {
-      window.open(fullUrl, '_blank');
+      window.open(lastResultUrl || fullUrl, '_blank');
     }
   };
 }
@@ -148,6 +151,7 @@ function showVideo(url, isFinal) {
 function showFinalVideo(url) {
   videoStatus = 'ready';
   videoUrl = url;
+  lastResultUrl = url;
   showVideo(url, true);
 }
 
@@ -191,6 +195,7 @@ function resetVideo() {
   }
   videoStatus = 'idle';
   videoUrl = null;
+  lastResultUrl = null;
   currentStartFrameUrl = null;
   resetDownload();
 }
@@ -709,9 +714,9 @@ async function startPaidRender() {
 
     if (status === 'render_started') {
       currentJobId = data.job_id;
+      lastJobId = data.job_id;
       pollAttempts = 0;
-      setStatus('Рендер запущен. Ждём результат…');
-      setProgress(10);
+      updateRenderProgress(60, 'Видео генерируется…');
       pendingPayment = null;
       pollStatus(currentJobId);
       return;
@@ -779,8 +784,8 @@ async function pollStatus(jobId) {
         showStartFrame(data.start_frame_url);
       }
       const p = typeof data.progress === 'number' ? data.progress : 50;
-      const capped = Math.min(80, Math.max(p, 10));
-      updateRenderProgress(capped, 'Идёт рендер… (' + p + '%)');
+      const dynamic = Math.min(80, Math.max(60, Math.round((pollAttempts + 1) * 2 + 60)));
+      updateRenderProgress(dynamic, 'Видео генерируется…');
 
       pollTimer = setTimeout(function () {
         pollStatus(jobId);
@@ -795,6 +800,8 @@ async function pollStatus(jobId) {
       }
       if (data.result && data.result.video_url) {
         showFinalVideo(data.result.video_url);
+        lastResultUrl = data.result.video_url;
+        lastJobId = currentJobId || lastJobId;
       }
       enableRenderButton(true);
       renderBtn.textContent = 'Сделать видео';
@@ -832,7 +839,7 @@ function startPaymentStatusPolling(paymentKey) {
       }
       const data = await resp.json();
       if (data.status === 'render_started' && data.job_id) {
-        updateRenderProgress(40, 'Видео отправлено в генерацию…');
+      updateRenderProgress(40, 'Оплата прошла. Отправляем видео в генерацию…');
         pollStatus(data.job_id);
         return;
       }
