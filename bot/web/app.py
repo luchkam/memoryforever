@@ -5,6 +5,7 @@ import io
 import os
 import threading
 import uuid
+import logging
 import json
 import hashlib
 from pathlib import Path
@@ -45,6 +46,7 @@ ensure_directories()
 Path("renders/temp").mkdir(parents=True, exist_ok=True)
 
 router = APIRouter(prefix="/v1")
+logger = logging.getLogger(__name__)
 
 # FS paths
 ROOT = Path(__file__).resolve().parents[2]
@@ -329,6 +331,15 @@ def _generate_scene_segment(session: Dict[str, Any], job: Dict[str, Any]) -> str
         and state.get_free_hugs_count(uid) >= FREE_HUGS_LIMIT
         and not state.is_free_hugs_whitelisted(uid)
     ):
+        free_used = state.get_free_hugs_count(uid)
+        logger.info(
+            "[FREE_LIMIT] user=%s source=web free_used=%s limit=%s allowed=%s scene=%s reason=render_scene",
+            uid,
+            free_used,
+            FREE_HUGS_LIMIT,
+            False,
+            scene_key,
+        )
         raise RuntimeError("FREE_HUGS_LIMIT_REACHED")
 
     send_path = ensure_jpeg_copy(start_frame)
@@ -387,6 +398,13 @@ def _generate_scene_segment(session: Dict[str, Any], job: Dict[str, Any]) -> str
 
     if state.is_free_hugs(scene_key) and not state.is_free_hugs_whitelisted(uid):
         state.inc_free_hugs_count(uid)
+        free_used = state.get_free_hugs_count(uid)
+        logger.info(
+            "[FREE_LIMIT_UPDATE] user=%s source=web free_used=%s scene=%s",
+            uid,
+            free_used,
+            scene_key,
+        )
 
     return str(seg_path)
 
@@ -743,6 +761,26 @@ async def download_render(job_id: str):
     return FileResponse(file_path, media_type="video/mp4", filename=filename)
 
 
+# Debug endpoint to introspect free-limit counters (temporary)
+@router.get("/debug/free_limit")
+async def debug_free_limit(user_id: str, source: str = "web"):
+    """
+    ВРЕМЕННЫЙ эндпоинт для отладки лимита бесплатных рендеров.
+    Возвращает текущее значение счётчика и лимита.
+    """
+    free_used = state.get_free_hugs_count(user_id)
+    allowed = free_used < FREE_HUGS_LIMIT or state.is_free_hugs_whitelisted(user_id)
+    return JSONResponse(
+        {
+            "user_id": user_id,
+            "source": source,
+            "free_used": free_used,
+            "free_limit": FREE_HUGS_LIMIT,
+            "allowed": allowed,
+        }
+    )
+
+
 @router.get("/render/status_by_payment/{payment_key}")
 async def render_status_by_payment(payment_key: str):
     payment = PAYMENT_SESSIONS.get(payment_key)
@@ -1011,3 +1049,22 @@ def create_app() -> FastAPI:
     app.mount("/assets", StaticFiles(directory=str(ROOT / "assets")), name="assets")
 
     return app
+
+# Debug endpoint to introspect free-limit counters (temporary)
+@router.get("/debug/free_limit")
+async def debug_free_limit(user_id: str, source: str = "web"):
+    """
+    ВРЕМЕННЫЙ эндпоинт для отладки лимита бесплатных рендеров.
+    Возвращает текущее значение счётчика и лимита.
+    """
+    free_used = state.get_free_hugs_count(user_id)
+    allowed = free_used < FREE_HUGS_LIMIT or state.is_free_hugs_whitelisted(user_id)
+    return JSONResponse(
+        {
+            "user_id": user_id,
+            "source": source,
+            "free_used": free_used,
+            "free_limit": FREE_HUGS_LIMIT,
+            "allowed": allowed,
+        }
+    )
