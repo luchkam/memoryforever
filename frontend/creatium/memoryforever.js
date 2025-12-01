@@ -43,6 +43,7 @@ let pendingPayment = null;
 let paymentStatusTimer = null;
 let lastJobId = null;
 let lastResultUrl = null;
+let webUserId = null;
 
 const selectedState = {
   sceneKey: '',
@@ -77,6 +78,27 @@ function setStatus(text, variant) {
 function setRenderError(text) {
   setStatus(text, 'error');
   enableRenderButton(true);
+}
+
+function getWebUserId() {
+  if (webUserId) return webUserId;
+  try {
+    const key = 'mf_web_uid';
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      webUserId = stored;
+    } else if (window.crypto && window.crypto.randomUUID) {
+      webUserId = 'web_' + window.crypto.randomUUID();
+      localStorage.setItem(key, webUserId);
+    } else {
+      webUserId = 'web_' + String(Date.now());
+      localStorage.setItem(key, webUserId);
+    }
+    console.log('[FREE_LIMIT] web user_id =', webUserId);
+  } catch (_e) {
+    webUserId = 'web_' + String(Date.now());
+  }
+  return webUserId;
 }
 
 function setProgress(percent) {
@@ -621,7 +643,7 @@ async function startPaidRender() {
     title: '',
     subtitle: '',
     photos: uploadedPhotoUrls,
-    user: 'web_' + Date.now()
+    user: getWebUserId()
   };
 
   updateRenderProgress(5, 'Отправляем запрос на рендер…');
@@ -644,6 +666,17 @@ async function startPaidRender() {
       body: JSON.stringify(payload)
     });
     if (!resp.ok) {
+      let body = {};
+      try {
+        body = await resp.json();
+      } catch (_e) {
+        body = {};
+      }
+      if (resp.status === 429 && body.status === 'free_limit_reached') {
+        updateRenderProgress(0, 'Лимит бесплатных видео исчерпан. Доступно 2 бесплатных видео на пользователя.');
+        enableRenderButton(true);
+        return;
+      }
       window.MF_DEBUG_LOGS.push({
         ts: new Date().toISOString(),
         message: '[MF_WEB] render start_paid HTTP error',

@@ -580,6 +580,34 @@ async def render_start_paid(payload: RenderRequest):
         print(f"[WEB_PAID] start_paid request: scene={payload.scene_key} price={price} payment_key={payment_key}", flush=True)
 
         if price <= 0:
+            uid_raw = payload.user or "web_anon"
+            try:
+                uid = int(uid_raw)
+            except Exception:
+                # strip non-digits to keep file key stable
+                uid = int(hashlib.sha1(str(uid_raw).encode("utf-8")).hexdigest(), 16) % (10**9)
+            free_used = state.get_free_hugs_count(uid)
+            allowed = free_used < FREE_HUGS_LIMIT or state.is_free_hugs_whitelisted(uid)
+            logger.info(
+                "[FREE_LIMIT] user=%s source=web free_used=%s limit=%s allowed=%s scene=%s reason=render_scene",
+                uid,
+                free_used,
+                FREE_HUGS_LIMIT,
+                allowed,
+                payload.scene_key,
+            )
+            if not allowed:
+                return JSONResponse(
+                    {
+                        "ok": False,
+                        "status": "free_limit_reached",
+                        "message": "Лимит бесплатных видео исчерпан",
+                        "free_used": free_used,
+                        "free_limit": FREE_HUGS_LIMIT,
+                    },
+                    status_code=429,
+                )
+
             queued = await _enqueue_render(payload)
             print(f"[WEB_PAID] render_started (free): job_id={queued.get('job_id')}", flush=True)
             job_id = queued.get("job_id")
