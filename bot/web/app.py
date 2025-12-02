@@ -8,6 +8,7 @@ import uuid
 import logging
 import json
 import hashlib
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -61,6 +62,8 @@ RENDER_JOBS: Dict[str, Dict[str, Any]] = {}
 PAYMENT_SESSIONS: Dict[str, Dict[str, Any]] = {}
 PAYMENT_TASKS: Dict[str, asyncio.Task] = {}
 PAYMENT_TO_JOB: Dict[str, str] = {}
+PAYMENT_TTL_SECONDS = 15 * 60  # 15 минут ожидания оплаты
+RENDER_TIMEOUT_SECONDS = 15 * 60  # 15 минут на рендер
 
 _ALLOWED_ORIGINS = [
     "https://memoryforever.ru",
@@ -636,6 +639,7 @@ async def render_start_paid(payload: RenderRequest):
                 return JSONResponse(
                     {"status": "error", "message": "payment_create_failed", "detail": str(exc)}, status_code=500
                 )
+            now_ts = datetime.utcnow().timestamp()
             payment = {
                 "payment_id": pay_id,
                 "payment_url": pay_url,
@@ -643,12 +647,13 @@ async def render_start_paid(payload: RenderRequest):
                 "price_rub": price,
                 "payload": payload.model_dump(),
                 "payment_key": payment_key,
+                "created_at": now_ts,
             }
             PAYMENT_SESSIONS[payment_key] = payment
             if payment_key not in PAYMENT_TASKS:
                 PAYMENT_TASKS[payment_key] = asyncio.create_task(_auto_render_after_payment(payment_key))
             payment_payload = {"@context": "https://schema.org/Payment", "id": pay_id, "url": pay_url}
-            print(f"[WEB_PAID] need_payment: payment_id={pay_id} url={pay_url}", flush=True)
+            print(f"[PAYMENT] create: key={payment_key} payment_id={pay_id} url={pay_url}", flush=True)
             return RenderPaidResponse(
                 status="need_payment",
                 payment_url=pay_url,
@@ -664,6 +669,20 @@ async def render_start_paid(payload: RenderRequest):
 
         # Если платёж уже существует, проверим статус
         if payment.get("status") != "paid":
+            created_at = payment.get("created_at")
+            if created_at:
+                age = datetime.utcnow().timestamp() - created_at
+                if age > PAYMENT_TTL_SECONDS:
+                    payment["status"] = "error"
+                    payment["error_code"] = "PAYMENT_TIMEOUT"
+                    PAYMENT_SESSIONS[payment_key] = payment
+                    print(f"[PAYMENT] timeout: key={payment_key} payment_id={payment.get('payment_id')}", flush=True)
+                    return RenderPaidResponse(
+                        status="error",
+                        payment_key=payment_key,
+                        message="Оплата не подтвердилась. Попробуйте ещё раз.",
+                        result={"error_code": "PAYMENT_TIMEOUT"},
+                    )
             try:
                 status_json = get_payment_status(payment["payment_id"])
             except Exception as exc:  # noqa: BLE001
@@ -675,11 +694,10 @@ async def render_start_paid(payload: RenderRequest):
             if is_paid_status(status_json):
                 payment["status"] = "paid"
             else:
-                print(f"[WEB_PAID] payment status raw: {status_json}", flush=True)
+                print(f"[PAYMENT] poll: key={payment_key} status={status_json}", flush=True)
                 pay_url = payment.get("payment_url")
                 pay_id = payment.get("payment_id")
                 payment_payload = {"@context": "https://schema.org/Payment", "id": pay_id, "url": pay_url}
-                print(f"[WEB_PAID] pending_payment: payment_id={pay_id} url={pay_url}", flush=True)
                 return RenderPaidResponse(
                     status="pending_payment",
                     payment_url=pay_url,
@@ -696,7 +714,10 @@ async def render_start_paid(payload: RenderRequest):
             payment["job_id"] = queued["job_id"]
             payment["status"] = "rendering"
             PAYMENT_SESSIONS[payment_key] = payment
-            print(f"[WEB_PAID] Payment confirmed → starting render for job_id={queued.get('job_id')}", flush=True)
+            print(
+                f"[PAYMENT] confirmed: key={payment_key} payment_id={payment.get('payment_id')} job_id={queued.get('job_id')}",
+                flush=True,
+            )
             return RenderPaidResponse(
                 status="render_started",
                 job_id=queued["job_id"],
@@ -748,13 +769,18 @@ async def _auto_render_after_payment(payment_key: str) -> None:
     if not pay_id:
         return
     try:
-        print(f"[WEB_PAID] auto-poll start: key={payment_key} pay_id={pay_id}", flush=True)
-        resp = await wait_for_tochka_payment(pay_id, timeout=900, poll_interval=5)
+        print(f"[PAYMENT] auto-poll start: key={payment_key} pay_id={pay_id}", flush=True)
+        created_at = payment.get("created_at") or datetime.utcnow().timestamp()
+        ttl_left = max(0, PAYMENT_TTL_SECONDS - (datetime.utcnow().timestamp() - created_at))
+        resp = await wait_for_tochka_payment(pay_id, timeout=int(ttl_left), poll_interval=5)
         if not resp:
             print(
-                f"[WEB_PAID] auto-poll timeout: key={payment_key} pay_id={pay_id} last_status={payment.get('status')}",
+                f"[PAYMENT] auto-poll timeout: key={payment_key} pay_id={pay_id} last_status={payment.get('status')}",
                 flush=True,
             )
+            payment["status"] = "error"
+            payment["error_code"] = "PAYMENT_TIMEOUT"
+            PAYMENT_SESSIONS[payment_key] = payment
             return
         payment["status"] = "paid"
         payload_dict = payment.get("payload") or {}
@@ -768,7 +794,7 @@ async def _auto_render_after_payment(payment_key: str) -> None:
         payment["status"] = "rendering"
         PAYMENT_SESSIONS[payment_key] = payment
         PAYMENT_TO_JOB[payment_key] = queued["job_id"]
-        print(f"[WEB_PAID] auto-poll render_started: job_id={queued.get('job_id')} key={payment_key}", flush=True)
+        print(f"[PAYMENT] auto-poll confirmed: job_id={queued.get('job_id')} key={payment_key}", flush=True)
     except Exception as exc:  # noqa: BLE001
         print(f"[WEB_PAID] auto-poll error: {exc}", flush=True)
 
@@ -778,6 +804,19 @@ async def render_status(job_id: str):
     data = RENDER_JOBS.get(job_id)
     if not data:
         return JSONResponse({"error": "not found"}, status_code=404)
+
+    created_at = data.get("created_at")
+    if created_at and data.get("status") in {"queued", "processing"}:
+        age = datetime.utcnow().timestamp() - created_at
+        if age > RENDER_TIMEOUT_SECONDS:
+            data["status"] = "error"
+            data["error"] = "RENDER_TIMEOUT"
+            data["error_code"] = "RENDER_TIMEOUT"
+            data["progress"] = 0
+            data["updated_at"] = datetime.utcnow().timestamp()
+            RENDER_JOBS[job_id] = data
+            print(f"[WEB_RENDER] timeout: job_id={job_id}", flush=True)
+
     return data
 
 
@@ -818,6 +857,15 @@ async def render_status_by_payment(payment_key: str):
     if not payment:
         return JSONResponse({"error": "not found"}, status_code=404)
 
+    created_at = payment.get("created_at")
+    if created_at and payment.get("status") not in {"render_started", "done", "error"}:
+        age = datetime.utcnow().timestamp() - created_at
+        if age > PAYMENT_TTL_SECONDS:
+            payment["status"] = "error"
+            payment["error_code"] = "PAYMENT_TIMEOUT"
+            payment["message"] = "Оплата не подтвердилась. Попробуйте ещё раз."
+            PAYMENT_SESSIONS[payment_key] = payment
+
     job_id = payment.get("job_id") or PAYMENT_TO_JOB.get(payment_key)
     if job_id:
         job = RENDER_JOBS.get(job_id)
@@ -827,6 +875,9 @@ async def render_status_by_payment(payment_key: str):
                 "job_id": job_id,
                 "status_url": f"/v1/render/status/{job_id}",
                 "result": job.get("result"),
+                "progress": job.get("progress", 0),
+                "error": job.get("error"),
+                "error_code": job.get("error_code"),
             }
 
     return {
@@ -834,12 +885,14 @@ async def render_status_by_payment(payment_key: str):
         "payment_url": payment.get("payment_url"),
         "payment_id": payment.get("payment_id"),
         "payment_key": payment_key,
+        "error_code": payment.get("error_code"),
+        "message": payment.get("message"),
     }
 
 
 async def _run_render(job_id: str, payload: RenderRequest) -> None:
     job = RENDER_JOBS.get(job_id, {})
-    job.update({"status": "processing", "progress": 5})
+    job.update({"status": "processing", "progress": 5, "updated_at": datetime.utcnow().timestamp()})
     RENDER_JOBS[job_id] = job
 
     uid = job.get("user_id") or (payload.user if payload.user is not None else None)
@@ -865,6 +918,7 @@ async def _run_render(job_id: str, payload: RenderRequest) -> None:
             abs_photos.append(str(abs_path))
 
         job["progress"] = 40
+        job["updated_at"] = datetime.utcnow().timestamp()
         RENDER_JOBS[job_id] = job
         print(f"[WEB_DEBUG] job {job_id} payload.photos = {payload.photos}")
         print(f"[WEB_DEBUG] job {job_id} abs_photos = {abs_photos}")
@@ -888,6 +942,7 @@ async def _run_render(job_id: str, payload: RenderRequest) -> None:
         }
         job["file_path"] = str(Path(video_path).resolve())
         job["download_name"] = "memoryforever_video.mp4"
+        job["updated_at"] = datetime.utcnow().timestamp()
         if source == "web" and is_free and uid:
             new_count = state.inc_free_hugs_count(str(uid), source="web")
             logger.info(
@@ -906,6 +961,9 @@ async def _run_render(job_id: str, payload: RenderRequest) -> None:
     except Exception as exc:  # noqa: BLE001
         job["status"] = "error"
         job["error"] = str(exc)
+        job["error_code"] = getattr(exc, "code", None)
+        job["progress"] = 0
+        job["updated_at"] = datetime.utcnow().timestamp()
         RENDER_JOBS[job_id] = job
         print(f"[WEB_DEBUG] error for job {job_id}: {exc!r}")
 
@@ -1057,6 +1115,7 @@ async def _enqueue_render(payload: RenderRequest, *, source: str = "web", is_fre
     job_id = uuid.uuid4().hex
     if is_free is None:
         is_free = _scene_price(payload.scene_key) <= 0
+    now_ts = datetime.utcnow().timestamp()
     RENDER_JOBS[job_id] = {
         "status": "queued",
         "photos": payload.photos,
@@ -1064,6 +1123,9 @@ async def _enqueue_render(payload: RenderRequest, *, source: str = "web", is_fre
         "user_id": payload.user,
         "source": source,
         "is_free": is_free,
+        "created_at": now_ts,
+        "updated_at": now_ts,
+        "progress": 0,
     }
     asyncio.create_task(_run_render(job_id, payload))
     return {"job_id": job_id, "status": "queued", "status_url": f"/v1/render/status/{job_id}"}

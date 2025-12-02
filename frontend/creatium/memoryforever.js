@@ -45,6 +45,10 @@ let lastJobId = null;
 let lastResultUrl = null;
 let webUserId = null;
 let selectedLocalFiles = [];
+let paymentPollAttempts = 0;
+const PAYMENT_MAX_POLL_ATTEMPTS = 30;
+let paymentPollAttempts = 0;
+const PAYMENT_MAX_POLL_ATTEMPTS = 30;
 
 const selectedState = {
   sceneKey: '',
@@ -126,6 +130,35 @@ function resetDownload() {
   }
 }
 
+function resetRenderState(msg) {
+  videoStatus = 'idle';
+  currentJobId = null;
+  pendingPayment = null;
+  clearPollTimer();
+  updateRenderProgress(0, msg || 'Выберите фото и запустите рендер.');
+  enableRenderButton(true);
+}
+
+function finalizeRender(data, message) {
+  clearPollTimer();
+  updateRenderProgress(80, 'Видео генерируется…');
+  setTimeout(function () {
+    updateRenderProgress(100, message || 'Готово! Видео сгенерировано.');
+    if (data && data.result && data.result.start_frame_url) {
+      showStartFrame(data.result.start_frame_url);
+    }
+    if (data && data.result && data.result.video_url) {
+      showFinalVideo(data.result.video_url);
+      lastResultUrl = data.result.video_url;
+      lastJobId = currentJobId || lastJobId;
+    }
+    videoStatus = 'ready';
+    enableRenderButton(true);
+    renderBtn.textContent = 'Сделать видео';
+    renderBtn.dataset.mode = 'render';
+  }, 300);
+}
+
 function setupDownload(fullUrl, enabled) {
   if (!downloadBtn) return;
   if (!enabled || !fullUrl) {
@@ -136,13 +169,27 @@ function setupDownload(fullUrl, enabled) {
   downloadBtn.onclick = function () {
     try {
       const downloadHref = lastJobId ? API_BASE + '/v1/render/download/' + lastJobId : fullUrl;
-      const a = document.createElement('a');
-      a.href = downloadHref;
-      a.download = 'memory_forever_video.mp4';
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      fetch(downloadHref, { mode: 'cors', credentials: 'omit' })
+        .then(function (res) {
+          if (!res.ok) throw new Error('download HTTP ' + res.status);
+          return res.blob();
+        })
+        .then(function (blob) {
+          const a = document.createElement('a');
+          const objUrl = URL.createObjectURL(blob);
+          a.href = objUrl;
+          a.download = 'memory_forever_video.mp4';
+          a.style.display = 'none';
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(function () {
+            URL.revokeObjectURL(objUrl);
+            document.body.removeChild(a);
+          }, 1000);
+        })
+        .catch(function () {
+          window.open(lastResultUrl || fullUrl, '_blank');
+        });
     } catch (e) {
       window.open(lastResultUrl || fullUrl, '_blank');
     }
@@ -647,7 +694,7 @@ async function startPaidRender() {
   pendingPayment = null;
 
   console.log('[DEBUG] start_paid payload.photos =', payload.photos);
-  window.MF_DEBUG_LOGS.push({ ts: new Date().toISOString(), message: '[MF_WEB] render start_paid → request', details: payload });
+    window.MF_DEBUG_LOGS.push({ ts: new Date().toISOString(), message: '[MF_WEB] render start_paid → request', details: payload });
   try {
     const resp = await fetch(API_BASE + '/v1/render/start_paid', {
       method: 'POST',
@@ -658,27 +705,39 @@ async function startPaidRender() {
     });
     if (!resp.ok) {
       let body = {};
+      let rawText = '';
       try {
-        body = await resp.json();
+        rawText = await resp.text();
+        body = rawText ? JSON.parse(rawText) : {};
       } catch (_e) {
         body = {};
       }
-      if (resp.status === 429 && body.status === 'free_limit_reached') {
+      const isLimit =
+        resp.status === 429 &&
+        (body.status === 'free_limit_reached' || body.error_code === 'FREE_HUGS_LIMIT_REACHED');
+      if (isLimit) {
         const limitMsg =
           'Лимит бесплатных видео исчерпан. Вы уже сделали 2 бесплатных видео на этом устройстве. Чтобы продолжить, выберите платный сюжет.';
-        updateRenderProgress(60, limitMsg);
+        updateRenderProgress(0, limitMsg);
         setStatus(limitMsg, 'error');
-        setRenderError(null);
+        setRenderError(limitMsg);
         videoStatus = 'idle';
+        renderBtn.textContent = 'Сделать видео';
+        renderBtn.dataset.mode = 'render';
         enableRenderButton(true);
         return;
       }
       window.MF_DEBUG_LOGS.push({
         ts: new Date().toISOString(),
         message: '[MF_WEB] render start_paid HTTP error',
-        details: { status: resp.status }
+        details: { status: resp.status, body: rawText || null }
       });
-      setRenderError('Не удалось запустить рендер: HTTP ' + resp.status);
+      const errMsg = 'Не удалось запустить рендер: HTTP ' + resp.status;
+      updateRenderProgress(0, errMsg);
+      setRenderError(errMsg);
+      videoStatus = 'idle';
+      enableRenderButton(true);
+      currentJobId = null;
       return;
     }
 
@@ -702,6 +761,8 @@ async function startPaidRender() {
     });
 
     const status = data.status;
+    safeLog('[MF_WEB] start_paid status', status);
+    safeLog('[MF_WEB] start_paid status', status);
 
     if (status === 'need_payment') {
       const paymentObj = data.payment || {};
@@ -725,7 +786,7 @@ async function startPaidRender() {
       };
 
       openPaymentModal({ url: paymentUrl, payload: payload });
-      updateRenderProgress(0, 'Оплата создана. После оплаты видео начнётся автоматически.');
+      updateRenderProgress(10, 'Оплата создана. После оплаты видео начнётся автоматически.');
       enableRenderButton(true);
       if (data.payment_key) {
         startPaymentStatusPolling(data.payment_key);
@@ -734,15 +795,7 @@ async function startPaidRender() {
     }
 
     if (status === 'done' && data.result && data.result.video_url) {
-      updateRenderProgress(100, 'Готово! Видео сгенерировано.');
-      if (data.result && data.result.start_frame_url) {
-        showStartFrame(data.result.start_frame_url);
-      }
-      if (data.result && data.result.video_url) {
-        showFinalVideo(data.result.video_url);
-        lastResultUrl = data.result.video_url;
-        lastJobId = currentJobId || lastJobId;
-      }
+      finalizeRender(data, 'Готово! Видео сгенерировано.');
       uploadedPhotoUrls = [];
       uploadedPhotoNames = [];
       selectedLocalFiles = [];
@@ -752,17 +805,15 @@ async function startPaidRender() {
         } catch (_e) {}
       }
       updatePhotosUi();
-      enableRenderButton(true);
-      renderBtn.textContent = 'Сделать видео';
-      renderBtn.dataset.mode = 'render';
       return;
     }
 
     if (status === 'render_started') {
+      safeLog('[MF_WEB] start_paid render_started', data.job_id);
       currentJobId = data.job_id;
       lastJobId = data.job_id;
       pollAttempts = 0;
-      updateRenderProgress(60, 'Видео генерируется…');
+      updateRenderProgress(40, 'Оплата получена. Отправляем на генерацию…');
       pendingPayment = null;
       pollStatus(currentJobId);
       return;
@@ -789,8 +840,11 @@ async function startPaidRender() {
       message: '[MF_WEB] render start_paid network error',
       details: { error: String(err) }
     });
-    setRenderError('Не удалось запустить рендер: Load failed');
+    const msg = 'Не удалось запустить рендер: Load failed';
+    updateRenderProgress(0, msg);
+    setRenderError(msg);
     videoStatus = 'idle';
+    currentJobId = null;
   }
 }
 
@@ -837,9 +891,14 @@ async function pollStatus(jobId) {
       if (data.start_frame_url) {
         showStartFrame(data.start_frame_url);
       }
-      const p = typeof data.progress === 'number' ? data.progress : 50;
-      const dynamic = Math.min(80, Math.max(60, Math.round((pollAttempts + 1) * 2 + 60)));
-      updateRenderProgress(dynamic, 'Видео генерируется…');
+      let p = 0;
+      if (typeof data.progress === 'number') {
+        p = Math.min(95, Math.max(60, data.progress));
+      } else {
+        const dynamic = Math.min(80, Math.max(60, Math.round((pollAttempts + 1) * 2 + 60)));
+        p = dynamic;
+      }
+      updateRenderProgress(p, 'Видео генерируется…');
 
       pollTimer = setTimeout(function () {
         pollStatus(jobId);
@@ -848,18 +907,7 @@ async function pollStatus(jobId) {
     }
 
     if (data.status === 'done') {
-      updateRenderProgress(100, 'Готово! Видео сгенерировано.');
-      if (data.result && data.result.start_frame_url) {
-        showStartFrame(data.result.start_frame_url);
-      }
-      if (data.result && data.result.video_url) {
-        showFinalVideo(data.result.video_url);
-        lastResultUrl = data.result.video_url;
-        lastJobId = currentJobId || lastJobId;
-      }
-      enableRenderButton(true);
-      renderBtn.textContent = 'Сделать видео';
-      renderBtn.dataset.mode = 'render';
+      finalizeRender(data, 'Готово! Видео сгенерировано.');
       return;
     }
 
@@ -868,6 +916,7 @@ async function pollStatus(jobId) {
       setStatus(friendly, 'error');
       videoStatus = 'error';
       videoUrl = null;
+      clearPollTimer();
       enableRenderButton(true);
       return;
     }
@@ -883,8 +932,17 @@ async function pollStatus(jobId) {
 
 function startPaymentStatusPolling(paymentKey) {
   if (!paymentKey) return;
+  paymentPollAttempts = 0;
   const poll = async function () {
     try {
+      paymentPollAttempts += 1;
+      if (paymentPollAttempts > PAYMENT_MAX_POLL_ATTEMPTS) {
+        const timeoutMsg = 'Оплата не подтвердилась. Попробуйте ещё раз.';
+        updateRenderProgress(0, timeoutMsg);
+        setStatus(timeoutMsg, 'error');
+        resetRenderState(timeoutMsg);
+        return;
+      }
       const resp = await fetch(API_BASE + '/v1/render/status_by_payment/' + paymentKey);
       if (!resp.ok) {
         paymentStatusTimer = setTimeout(function () {
@@ -893,15 +951,30 @@ function startPaymentStatusPolling(paymentKey) {
         return;
       }
       const data = await resp.json();
+      safeLog('[MF_WEB] payment poll status', data.status);
+      if (data.status === 'pending_payment' || data.status === 'need_payment') {
+        updateRenderProgress(20, 'Ожидаем подтверждение оплаты…');
+        paymentStatusTimer = setTimeout(function () {
+          poll();
+        }, POLL_INTERVAL_MS);
+        return;
+      }
       if (data.status === 'render_started' && data.job_id) {
-      updateRenderProgress(40, 'Оплата прошла. Отправляем видео в генерацию…');
+        safeLog('[MF_WEB] payment poll render_started', data.job_id);
+        updateRenderProgress(40, 'Оплата получена. Отправляем на генерацию…');
+        clearPollTimer();
         pollStatus(data.job_id);
         return;
       }
       if (data.status === 'done' && data.result && data.result.video_url && data.job_id) {
-        showFinalVideo(data.result.video_url);
-        updateRenderProgress(100, 'Готово! Видео сгенерировано.');
-        enableRenderButton(true);
+        finalizeRender(data, 'Готово! Видео сгенерировано.');
+        return;
+      }
+      if (data.status === 'error') {
+        const msg = data.message || 'Оплата не подтвердилась. Попробуйте ещё раз.';
+        updateRenderProgress(0, msg);
+        setStatus(msg, 'error');
+        resetRenderState(msg);
         return;
       }
       updateRenderProgress(10, 'Ожидаем подтверждение оплаты…');
