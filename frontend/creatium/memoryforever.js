@@ -464,8 +464,9 @@ function fillSelect(selectEl, items, options) {
 // Фото
 
 async function uploadPhotos(files) {
+  console.log('[DEBUG] uploadPhotos called with', files && files.length, 'files');
   const newFiles = (files || []).slice();
-  const existingCount = uploadedPhotoUrls.length;
+  let existingCount = 0; // мы всегда пересоздаём список
   const maxAllowed = maxPhotosAllowed();
   const hadMaxPhotos = existingCount >= maxAllowed;
   const effectiveExisting = hadMaxPhotos ? 0 : existingCount;
@@ -527,19 +528,15 @@ async function uploadPhotos(files) {
       throw new Error('Сервер не вернул пути загруженных файлов.');
     }
 
-    if (hadMaxPhotos) {
-      uploadedPhotoUrls = [];
-      uploadedPhotoNames = [];
-    }
-
-    const spaceLeft = Math.max(0, maxAllowed - uploadedPhotoUrls.length);
+    // пересоздаем списки (без накопления)
+    const spaceLeft = Math.max(0, maxAllowed);
     const added = data.files.slice(0, spaceLeft);
-    uploadedPhotoUrls = uploadedPhotoUrls.concat(added);
+    uploadedPhotoUrls = added;
 
     const fileNames = newFiles.map(function (f) {
       return f.name;
     }).slice(0, spaceLeft);
-    uploadedPhotoNames = uploadedPhotoNames.concat(fileNames);
+    uploadedPhotoNames = fileNames;
 
     updatePhotosUi();
     resetToStartFramePhase('photos-updated');
@@ -674,7 +671,11 @@ async function startPaidRender() {
         body = {};
       }
       if (resp.status === 429 && body.status === 'free_limit_reached') {
-        updateRenderProgress(0, 'Лимит бесплатных видео исчерпан. Доступно 2 бесплатных видео на пользователя.');
+        updateRenderProgress(
+          60,
+          'Лимит бесплатных видео исчерпан. Вы уже сделали 2 бесплатных видео на этом устройстве. Чтобы продолжить, выберите платный сюжет.'
+        );
+        setRenderError(null);
         enableRenderButton(true);
         return;
       }
@@ -1055,7 +1056,16 @@ function openExampleVideo() {
 // События
 
 function handlePhotosChange(evt) {
-  selectedLocalFiles = evt.target.files ? Array.from(evt.target.files) : [];
+  console.log('[DEBUG] handlePhotosChange, new FileList:', evt.target.files);
+  const files = evt.target.files ? Array.from(evt.target.files) : [];
+  // сбрасываем прежние фото
+  uploadedPhotoUrls = [];
+  uploadedPhotoNames = [];
+  selectedLocalFiles = files.slice();
+  updatePhotosUi();
+  if (selectedLocalFiles.length === 0) {
+    return;
+  }
   uploadPhotos(selectedLocalFiles.slice());
 }
 
