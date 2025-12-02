@@ -580,18 +580,13 @@ async def render_start_paid(payload: RenderRequest):
         print(f"[WEB_PAID] start_paid request: scene={payload.scene_key} price={price} payment_key={payment_key}", flush=True)
 
         if price <= 0:
-            uid_raw = payload.user or "web_anon"
-            try:
-                uid = int(uid_raw)
-            except Exception:
-                uid = int(hashlib.sha1(str(uid_raw).encode("utf-8")).hexdigest(), 16) % (10**9)
-            free_used = state.get_free_hugs_count(uid)
-            allowed = free_used < FREE_HUGS_LIMIT or state.is_free_hugs_whitelisted(uid)
+            uid = str(payload.user or "web_anon")
+            free_used, free_limit, allowed = state.get_free_hugs_info(uid, source="web")
             logger.info(
                 "[FREE_LIMIT] user=%s source=web free_used=%s limit=%s allowed=%s scene=%s reason=precheck_start_paid",
                 uid,
                 free_used,
-                FREE_HUGS_LIMIT,
+                free_limit,
                 allowed,
                 payload.scene_key,
             )
@@ -602,7 +597,7 @@ async def render_start_paid(payload: RenderRequest):
                         "status": "free_limit_reached",
                         "message": "Лимит бесплатных видео исчерпан. Вы уже сделали 2 бесплатных видео.",
                         "free_used": free_used,
-                        "free_limit": FREE_HUGS_LIMIT,
+                        "free_limit": free_limit,
                     },
                     status_code=429,
                 )

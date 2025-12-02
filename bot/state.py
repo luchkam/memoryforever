@@ -50,19 +50,35 @@ def _quota_save(data: dict) -> None:
     os.replace(tmp_path, FREE_HUGS_QUOTA_FILE)
 
 
-def get_free_hugs_count(uid: int) -> int:
+def _free_key(uid: str, source: str = "web") -> str:
+    return f"{source}:{str(uid)}"
+
+
+def get_free_hugs_info(uid: str, source: str = "web") -> tuple[int, int, bool]:
     data = _quota_load()
+    key = _free_key(uid, source)
     try:
-        return int(data.get(str(uid), 0))
+        used = int(data.get(key, 0))
     except Exception:
-        return 0
+        used = 0
+    allowed = used < FREE_HUGS_LIMIT or is_free_hugs_whitelisted(uid)
+    return used, FREE_HUGS_LIMIT, allowed
 
 
-def inc_free_hugs_count(uid: int, delta: int = 1) -> None:
+def get_free_hugs_count(uid: str, source: str = "web") -> int:
+    used, _, _ = get_free_hugs_info(uid, source)
+    return used
+
+
+def inc_free_hugs_count(uid: str, source: str = "web", delta: int = 1) -> int:
     data = _quota_load()
-    key = str(uid)
+    key = _free_key(uid, source)
     data[key] = int(data.get(key, 0)) + delta
     _quota_save(data)
+    try:
+        return int(data.get(key, 0))
+    except Exception:
+        return 0
 
 
 def is_free_hugs(scene_key: str) -> bool:
