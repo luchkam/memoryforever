@@ -466,28 +466,17 @@ function fillSelect(selectEl, items, options) {
 async function uploadPhotos(files) {
   console.log('[DEBUG] uploadPhotos called with', files && files.length, 'files');
   const newFiles = (files || []).slice();
-  let existingCount = 0; // мы всегда пересоздаём список
   const maxAllowed = maxPhotosAllowed();
-  const hadMaxPhotos = existingCount >= maxAllowed;
-  const effectiveExisting = hadMaxPhotos ? 0 : existingCount;
-
-  safeLog('[MF_WEB] upload change files', { selected: newFiles.length, existing: existingCount, max: maxAllowed });
+  safeLog('[MF_WEB] upload change files', { selected: newFiles.length, existing: 0, max: maxAllowed });
 
   if (!newFiles || newFiles.length === 0) {
     setPhotosStatus('Выберите 1–2 фотографии.', 'error');
-    enableRenderButton(existingCount >= requiredPhotosCount());
+    enableRenderButton(false);
     if (photosInput) photosInput.value = '';
     return;
   }
 
-  if (existingCount >= maxAllowed) {
-    // Считаем, что пользователь хочет заменить фото
-    uploadedPhotoUrls = [];
-    uploadedPhotoNames = [];
-    existingCount = 0;
-  }
-
-  if (effectiveExisting + newFiles.length > maxAllowed) {
+  if (newFiles.length > maxAllowed) {
     const msg = maxAllowed === 1 ? 'Для этого сюжета допускается только 1 фото.' : 'Можно загрузить только 1–2 фотографии.';
     setPhotosStatus(msg, 'error');
     if (photosInput) photosInput.value = '';
@@ -530,13 +519,12 @@ async function uploadPhotos(files) {
 
     // пересоздаем списки (без накопления)
     const spaceLeft = Math.max(0, maxAllowed);
-    const added = data.files.slice(0, spaceLeft);
-    uploadedPhotoUrls = added;
-
-    const fileNames = newFiles.map(function (f) {
-      return f.name;
-    }).slice(0, spaceLeft);
-    uploadedPhotoNames = fileNames;
+    uploadedPhotoUrls = data.files.slice(0, spaceLeft);
+    uploadedPhotoNames = newFiles
+      .map(function (f) {
+        return f.name;
+      })
+      .slice(0, spaceLeft);
 
     updatePhotosUi();
     resetToStartFramePhase('photos-updated');
@@ -632,6 +620,10 @@ async function startRender() {
 }
 
 async function startPaidRender() {
+  if (!uploadedPhotoUrls || uploadedPhotoUrls.length === 0) {
+    updateRenderProgress(0, 'Сначала загрузите 1–2 фото для видео.');
+    return;
+  }
 
   const payload = {
     format_key: selectedState.formatKey,
@@ -654,6 +646,7 @@ async function startPaidRender() {
 
   pendingPayment = null;
 
+  console.log('[DEBUG] start_paid payload.photos =', payload.photos);
   window.MF_DEBUG_LOGS.push({ ts: new Date().toISOString(), message: '[MF_WEB] render start_paid → request', details: payload });
   try {
     const resp = await fetch(API_BASE + '/v1/render/start_paid', {
@@ -671,11 +664,12 @@ async function startPaidRender() {
         body = {};
       }
       if (resp.status === 429 && body.status === 'free_limit_reached') {
-        updateRenderProgress(
-          60,
-          'Лимит бесплатных видео исчерпан. Вы уже сделали 2 бесплатных видео на этом устройстве. Чтобы продолжить, выберите платный сюжет.'
-        );
+        const limitMsg =
+          'Лимит бесплатных видео исчерпан. Вы уже сделали 2 бесплатных видео на этом устройстве. Чтобы продолжить, выберите платный сюжет.';
+        updateRenderProgress(60, limitMsg);
+        setStatus(limitMsg, 'error');
         setRenderError(null);
+        videoStatus = 'idle';
         enableRenderButton(true);
         return;
       }
@@ -796,6 +790,7 @@ async function startPaidRender() {
       details: { error: String(err) }
     });
     setRenderError('Не удалось запустить рендер: Load failed');
+    videoStatus = 'idle';
   }
 }
 
@@ -810,6 +805,13 @@ function clearPollTimer() {
     clearTimeout(paymentStatusTimer);
     paymentStatusTimer = null;
   }
+}
+
+function mapRenderError(message, code) {
+  if (code === 'NO_PHOTOS_PROVIDED' || (message && message.indexOf('No photos provided') !== -1)) {
+    return 'Не удалось прочитать фото. Попробуйте заново выбрать 1–2 файла и запустить рендер.';
+  }
+  return message || 'Неизвестная ошибка при рендере.';
 }
 
 async function pollStatus(jobId) {
@@ -862,7 +864,8 @@ async function pollStatus(jobId) {
     }
 
     if (data.status === 'error') {
-      setStatus('Ошибка при рендере: ' + (data.error || 'неизвестная ошибка'), 'error');
+      const friendly = mapRenderError(data.error, data.error_code || data.code);
+      setStatus(friendly, 'error');
       videoStatus = 'error';
       videoUrl = null;
       enableRenderButton(true);
@@ -1128,9 +1131,9 @@ function initToolbar() {
         <p><i>Опции применяются ко всему ролику и добавляются к итоговой цене.</i></p>
       `);
     } else if (act === 'offer') {
-      window.open('/assets/legal/offer_full.pdf', '_blank');
+      window.open('https://memoryforever.ru/oferta', '_blank');
     } else if (act === 'policy') {
-      window.open('/assets/legal/policy_full.pdf', '_blank');
+      window.open('https://memoryforever.ru/privacy', '_blank');
     } else if (act === 'support') {
       openModal('Техподдержка', '', null);
       buildSupportModal();

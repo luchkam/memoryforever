@@ -1615,7 +1615,7 @@ def _runway_segment_from_startframe(
             rotate=FREE_HUGS_WM_ROTATE,
         )
 
-    if scene_key == FREE_HUGS_SCENE and session_id and not is_free_hugs_whitelisted(session_id):
+    if scene_key == FREE_HUGS_SCENE and isinstance(session_id, int) and not is_free_hugs_whitelisted(session_id):
         inc_free_hugs_count(session_id)
 
     return seg_path
@@ -1663,7 +1663,7 @@ def render_full_video_from_photos_web(
 
     if (
         scene_key == FREE_HUGS_SCENE
-        and session_id
+        and isinstance(session_id, int)
         and not is_free_hugs_whitelisted(session_id)
         and get_free_hugs_count(session_id) >= FREE_HUGS_LIMIT
     ):

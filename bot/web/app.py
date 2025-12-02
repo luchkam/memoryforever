@@ -590,6 +590,10 @@ async def render_start_paid(payload: RenderRequest):
                 allowed,
                 payload.scene_key,
             )
+            print(
+                f"[FREE_LIMIT] user={uid} source=web free_used={free_used} limit={free_limit} allowed={allowed} scene={payload.scene_key} reason=precheck_start_paid",
+                flush=True,
+            )
             if not allowed:
                 return JSONResponse(
                     {
@@ -602,10 +606,16 @@ async def render_start_paid(payload: RenderRequest):
                     status_code=429,
                 )
 
-            queued = await _enqueue_render(payload)
+            queued = await _enqueue_render(payload, source="web", is_free=True)
             print(f"[WEB_PAID] render_started (free): job_id={queued.get('job_id')}", flush=True)
             job_id = queued.get("job_id")
             status_url = queued.get("status_url")
+            if job_id in RENDER_JOBS:
+                job = RENDER_JOBS[job_id]
+                job["user_id"] = uid
+                job["source"] = "web"
+                job["is_free"] = True
+                RENDER_JOBS[job_id] = job
             return RenderPaidResponse(
                 status="render_started",
                 job_id=job_id,
@@ -790,14 +800,13 @@ async def debug_free_limit(user_id: str, source: str = "web"):
     ВРЕМЕННЫЙ эндпоинт для отладки лимита бесплатных рендеров.
     Возвращает текущее значение счётчика и лимита.
     """
-    free_used = state.get_free_hugs_count(user_id)
-    allowed = free_used < FREE_HUGS_LIMIT or state.is_free_hugs_whitelisted(user_id)
+    free_used, free_limit, allowed = state.get_free_hugs_info(str(user_id), source=source)
     return JSONResponse(
         {
             "user_id": user_id,
             "source": source,
             "free_used": free_used,
-            "free_limit": FREE_HUGS_LIMIT,
+            "free_limit": free_limit,
             "allowed": allowed,
         }
     )
@@ -831,6 +840,16 @@ async def render_status_by_payment(payment_key: str):
 async def _run_render(job_id: str, payload: RenderRequest) -> None:
     job = RENDER_JOBS.get(job_id, {})
     job.update({"status": "processing", "progress": 5})
+    RENDER_JOBS[job_id] = job
+
+    uid = job.get("user_id") or (payload.user if payload.user is not None else None)
+    source = job.get("source") or "web"
+    is_free = job.get("is_free")
+    if is_free is None:
+        is_free = _scene_price(payload.scene_key) <= 0
+    job["user_id"] = uid
+    job["source"] = source
+    job["is_free"] = is_free
     RENDER_JOBS[job_id] = job
 
     try:
@@ -869,6 +888,18 @@ async def _run_render(job_id: str, payload: RenderRequest) -> None:
         }
         job["file_path"] = str(Path(video_path).resolve())
         job["download_name"] = "memoryforever_video.mp4"
+        if source == "web" and is_free and uid:
+            new_count = state.inc_free_hugs_count(str(uid), source="web")
+            logger.info(
+                "[FREE_LIMIT_UPDATE] user=%s source=web free_used=%s scene=%s",
+                uid,
+                new_count,
+                payload.scene_key,
+            )
+            print(
+                f"[FREE_LIMIT_UPDATE] user={uid} source=web free_used={new_count} scene={payload.scene_key}",
+                flush=True,
+            )
         RENDER_JOBS[job_id] = job
         print(f"[WEB_DEBUG] job {job_id} completed: {video_path}")
 
@@ -1022,9 +1053,18 @@ def get_result(session_id: str):
         raise HTTPException(status_code=404, detail="Result not ready")
     return FileResponse(result_path, media_type="video/mp4", filename=Path(result_path).name)
 
-async def _enqueue_render(payload: RenderRequest) -> Dict[str, Any]:
+async def _enqueue_render(payload: RenderRequest, *, source: str = "web", is_free: Optional[bool] = None) -> Dict[str, Any]:
     job_id = uuid.uuid4().hex
-    RENDER_JOBS[job_id] = {"status": "queued", "photos": payload.photos, "payload": payload.model_dump()}
+    if is_free is None:
+        is_free = _scene_price(payload.scene_key) <= 0
+    RENDER_JOBS[job_id] = {
+        "status": "queued",
+        "photos": payload.photos,
+        "payload": payload.model_dump(),
+        "user_id": payload.user,
+        "source": source,
+        "is_free": is_free,
+    }
     asyncio.create_task(_run_render(job_id, payload))
     return {"job_id": job_id, "status": "queued", "status_url": f"/v1/render/status/{job_id}"}
 
