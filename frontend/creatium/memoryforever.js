@@ -47,8 +47,6 @@ let webUserId = null;
 let selectedLocalFiles = [];
 let paymentPollAttempts = 0;
 const PAYMENT_MAX_POLL_ATTEMPTS = 30;
-let paymentPollAttempts = 0;
-const PAYMENT_MAX_POLL_ATTEMPTS = 30;
 
 const selectedState = {
   sceneKey: '',
@@ -522,6 +520,7 @@ async function uploadPhotos(files) {
     if (photosInput) photosInput.value = '';
     return;
   }
+  safeLog('[MF_WEB] upload start', { files: newFiles.length });
 
   if (newFiles.length > maxAllowed) {
     const msg = maxAllowed === 1 ? 'Для этого сюжета допускается только 1 фото.' : 'Можно загрузить только 1–2 фотографии.';
@@ -582,6 +581,7 @@ async function uploadPhotos(files) {
       setStatus('Фото загружены. Сгенерируйте старт-кадр.');
     }
     photosInput.value = '';
+    safeLog('[MF_WEB] upload success', { files: uploadedPhotoUrls });
   } catch (err) {
     safeLog('[MF_WEB] upload error', err && err.message ? err.message : err);
     setPhotosStatus('Ошибка при загрузке фото. Попробуйте ещё раз.', 'error');
@@ -761,7 +761,6 @@ async function startPaidRender() {
     });
 
     const status = data.status;
-    safeLog('[MF_WEB] start_paid status', status);
     safeLog('[MF_WEB] start_paid status', status);
 
     if (status === 'need_payment') {
@@ -959,7 +958,10 @@ function startPaymentStatusPolling(paymentKey) {
         }, POLL_INTERVAL_MS);
         return;
       }
-      if (data.status === 'render_started' && data.job_id) {
+      if (
+        (data.status === 'render_started' || data.status === 'queued' || data.status === 'processing') &&
+        data.job_id
+      ) {
         safeLog('[MF_WEB] payment poll render_started', data.job_id);
         updateRenderProgress(40, 'Оплата получена. Отправляем на генерацию…');
         clearPollTimer();
@@ -1134,6 +1136,7 @@ function openExampleVideo() {
 function handlePhotosChange(evt) {
   console.log('[DEBUG] handlePhotosChange, new FileList:', evt.target.files);
   const files = evt.target.files ? Array.from(evt.target.files) : [];
+  resetRenderState('photos-change');
   // сбрасываем прежние фото
   uploadedPhotoUrls = [];
   uploadedPhotoNames = [];

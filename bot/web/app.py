@@ -522,6 +522,7 @@ async def start_frame(req: StartFrameRequest):
 
 @router.post("/upload")
 async def upload_files(files: List[UploadFile] = File(...)):
+    print(f"[WEB_UPLOAD] start: files={len(files)}", flush=True)
     saved: List[str] = []
     for upload in files:
         contents = await upload.read()
@@ -535,6 +536,10 @@ async def upload_files(files: List[UploadFile] = File(...)):
         ext = Path(upload.filename or "").suffix.lower() or ".jpg"
         saved_path = save_upload_image_bytes(contents, owner_label="web", ext_hint=ext)
         saved.append("/" + Path(saved_path).as_posix())
+        try:
+            print(f"[WEB_UPLOAD] saved {upload.filename} -> {saved_path} ({len(contents)} bytes)", flush=True)
+        except Exception:
+            pass
     return {"files": saved}
 
 
@@ -917,7 +922,7 @@ async def _run_render(job_id: str, payload: RenderRequest) -> None:
                 raise FileNotFoundError(f"photo not found: {abs_path}")
             abs_photos.append(str(abs_path))
 
-        job["progress"] = 40
+        job["progress"] = 60
         job["updated_at"] = datetime.utcnow().timestamp()
         RENDER_JOBS[job_id] = job
         print(f"[WEB_DEBUG] job {job_id} payload.photos = {payload.photos}")
@@ -1127,6 +1132,7 @@ async def _enqueue_render(payload: RenderRequest, *, source: str = "web", is_fre
         "updated_at": now_ts,
         "progress": 0,
     }
+    print(f"[WEB_RENDER] enqueue job_id={job_id} scene={payload.scene_key} user={payload.user}", flush=True)
     asyncio.create_task(_run_render(job_id, payload))
     return {"job_id": job_id, "status": "queued", "status_url": f"/v1/render/status/{job_id}"}
 
