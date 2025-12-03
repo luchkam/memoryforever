@@ -872,26 +872,43 @@ async def render_status_by_payment(payment_key: str):
             PAYMENT_SESSIONS[payment_key] = payment
 
     job_id = payment.get("job_id") or PAYMENT_TO_JOB.get(payment_key)
+    job_status = None
     if job_id:
         job = RENDER_JOBS.get(job_id)
         if job:
+            job_status = job.get("status")
             return {
-                "status": job.get("status"),
+                "payment_status": "paid",
+                "status": job_status or "processing",
+                "job_status": job_status or "processing",
                 "job_id": job_id,
                 "status_url": f"/v1/render/status/{job_id}",
                 "result": job.get("result"),
                 "progress": job.get("progress", 0),
                 "error": job.get("error"),
                 "error_code": job.get("error_code"),
+                "message": job.get("error"),
             }
 
+    pay_status_raw = payment.get("status")
+    pay_status = "pending"
+    if pay_status_raw == "paid":
+        pay_status = "paid"
+    elif pay_status_raw == "error":
+        pay_status = "failed"
+    elif pay_status_raw == "rendering":
+        pay_status = "paid"
+
     return {
+        "payment_status": pay_status,
         "status": payment.get("status"),
+        "job_status": job_status,
         "payment_url": payment.get("payment_url"),
         "payment_id": payment.get("payment_id"),
         "payment_key": payment_key,
         "error_code": payment.get("error_code"),
         "message": payment.get("message"),
+        "progress": payment.get("progress", 0),
     }
 
 

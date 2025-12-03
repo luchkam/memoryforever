@@ -187,6 +187,38 @@ function notifySupportRenderSuccess(data) {
   }
 }
 
+function notifySupportRenderError(data) {
+  try {
+    const sceneKey = selectedState.sceneKey || (data && data.scene_key) || '';
+    const fmt = selectedState.formatKey || '';
+    const bg = selectedState.backgroundKey || '';
+    const mus = selectedState.musicKey || '';
+    const jobId = (data && (data.job_id || data.id)) || lastJobId;
+    const paymentKey = (data && data.payment_key) || (pendingPayment && pendingPayment.payment_key) || '';
+    const errCode = (data && data.error_code) || (data && data.error) || '';
+    const msg = (data && data.message) || '';
+    const lines = [
+      '❌ Ошибка рендера (веб)',
+      jobId ? 'Job ID: ' + jobId : null,
+      paymentKey ? 'Payment key: ' + paymentKey : null,
+      sceneKey ? 'Сюжет: ' + sceneKey : null,
+      fmt ? 'Формат: ' + fmt : null,
+      bg ? 'Фон: ' + bg : null,
+      mus ? 'Музыка: ' + mus : null,
+      errCode ? 'Код: ' + errCode : null,
+      msg ? 'Сообщение: ' + msg : null,
+      'Источник: memoryforever.ru (веб)',
+    ].filter(Boolean);
+    fetch(API_BASE + '/v1/support', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: lines.join('\n'), user_contact: '' }),
+    }).catch(function () {});
+  } catch (_e) {
+    // ignore
+  }
+}
+
 function setupDownload(fullUrl, enabled) {
   if (!downloadBtn) return;
   if (!enabled || !fullUrl) {
@@ -953,6 +985,7 @@ async function pollStatus(jobId) {
       videoUrl = null;
       clearPollTimer();
       enableRenderButton(true);
+      notifySupportRenderError(data);
       return;
     }
 
@@ -987,52 +1020,77 @@ function startPaymentStatusPolling(paymentKey) {
       }, POLL_INTERVAL_MS);
       return;
     }
-    const data = await resp.json();
-    safeLog('[MF_WEB] payment poll status', data.status);
-    if (data.status === 'pending_payment' || data.status === 'need_payment') {
-      updateRenderProgress(20, 'Ожидаем подтверждение оплаты…');
-      paymentStatusTimer = setTimeout(function () {
-        poll();
-      }, POLL_INTERVAL_MS);
-      return;
-    }
-    if (
-      (data.status === 'render_started' || data.status === 'queued' || data.status === 'processing') &&
-      data.job_id
-    ) {
-      safeLog('[MF_WEB] payment poll render_started', data.job_id);
-      paymentConfirmed = true;
-      updateRenderProgress(40, 'Оплата получена. Отправляем на генерацию…');
-      clearPollTimer();
-      pollStatus(data.job_id);
-      return;
-    }
-    if (data.status === 'done' && data.result && data.result.video_url && data.job_id) {
-      if (!paymentConfirmed) {
-        updateRenderProgress(80, 'Видео почти готово…');
+      const data = await resp.json();
+      const payStatus = data.payment_status || data.status;
+      const jobStatus = data.job_status || data.status;
+      safeLog('[MF_WEB] payment poll status', { status: data.status, payStatus, jobStatus });
+
+      if (payStatus === 'pending' || data.status === 'need_payment' || data.status === 'pending_payment') {
+        const step = data.status === 'need_payment' ? 10 : 20;
+        updateRenderProgress(step, 'Ожидаем подтверждение оплаты…');
+        paymentStatusTimer = setTimeout(function () {
+          poll();
+        }, POLL_INTERVAL_MS);
+        return;
       }
-      finalizeRender(data, 'Готово! Видео сгенерировано.');
-      return;
-    }
-    if (data.status === 'error') {
-      const msg = data.message || 'Оплата не подтвердилась. Попробуйте ещё раз.';
-      updateRenderProgress(0, msg);
-      setStatus(msg, 'error');
-      resetRenderState(msg);
-      return;
-    }
-    if (paymentConfirmed) {
-      fakeProgress = Math.min(PAYMENT_FAKE_MAX, fakeProgress + 2);
-      updateRenderProgress(fakeProgress, 'Видео генерируется…');
+
+      if (payStatus === 'timeout' || data.error_code === 'PAYMENT_TIMEOUT') {
+        const msg = data.message || 'Оплата не подтвердилась. Попробуйте ещё раз.';
+        updateRenderProgress(0, msg);
+        setStatus(msg, 'error');
+        resetRenderState(msg);
+        return;
+      }
+
+      if (
+        (data.status === 'render_started' ||
+          jobStatus === 'queued' ||
+          jobStatus === 'processing' ||
+          jobStatus === 'render_started' ||
+          data.status === 'queued' ||
+          data.status === 'processing') &&
+        data.job_id
+      ) {
+        safeLog('[MF_WEB] payment poll render_started', data.job_id);
+        paymentConfirmed = true;
+        updateRenderProgress(40, 'Оплата получена. Отправляем на генерацию…');
+        clearPollTimer();
+        pollStatus(data.job_id);
+        return;
+      }
+
+      if (payStatus === 'paid' && data.status === 'done' && data.result && data.result.video_url) {
+        if (!paymentConfirmed) {
+          updateRenderProgress(80, 'Видео почти готово…');
+        }
+        finalizeRender(data, 'Готово! Видео сгенерировано.');
+        return;
+      }
+
+      if (payStatus === 'paid' && data.status === 'error') {
+        const msg =
+          data.message ||
+          'Оплата прошла, но не удалось сгенерировать видео. Попробуйте другие фото или другой сюжет.';
+        updateRenderProgress(0, msg);
+        setStatus(msg, 'error');
+        notifySupportRenderError(data);
+        resetRenderState(msg);
+        return;
+      }
+
+      if (paymentConfirmed) {
+        fakeProgress = Math.min(PAYMENT_FAKE_MAX, fakeProgress + 2);
+        updateRenderProgress(fakeProgress, 'Видео генерируется…');
+        paymentStatusTimer = setTimeout(function () {
+          poll();
+        }, POLL_INTERVAL_MS);
+        return;
+      }
+
+      updateRenderProgress(10, 'Ожидаем подтверждение оплаты…');
       paymentStatusTimer = setTimeout(function () {
         poll();
       }, POLL_INTERVAL_MS);
-      return;
-    }
-    updateRenderProgress(10, 'Ожидаем подтверждение оплаты…');
-    paymentStatusTimer = setTimeout(function () {
-      poll();
-    }, POLL_INTERVAL_MS);
     } catch (_e) {
       paymentStatusTimer = setTimeout(function () {
         poll();
