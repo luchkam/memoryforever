@@ -47,6 +47,7 @@ let webUserId = null;
 let selectedLocalFiles = [];
 let paymentPollAttempts = 0;
 const PAYMENT_MAX_POLL_ATTEMPTS = 30;
+const PAYMENT_FAKE_MAX = 80;
 
 const selectedState = {
   sceneKey: '',
@@ -149,12 +150,41 @@ function finalizeRender(data, message) {
       showFinalVideo(data.result.video_url);
       lastResultUrl = data.result.video_url;
       lastJobId = currentJobId || lastJobId;
+      notifySupportRenderSuccess(data);
     }
     videoStatus = 'ready';
     enableRenderButton(true);
     renderBtn.textContent = 'Сделать видео';
     renderBtn.dataset.mode = 'render';
   }, 300);
+}
+
+function notifySupportRenderSuccess(data) {
+  try {
+    const sceneKey = selectedState.sceneKey || (data && data.scene_key) || '';
+    const fmt = selectedState.formatKey || '';
+    const bg = selectedState.backgroundKey || '';
+    const mus = selectedState.musicKey || '';
+    const jobId = (data && (data.job_id || data.id)) || lastJobId;
+    const videoUrl = data && data.result && data.result.video_url;
+    const lines = [
+      '🎬 Новое видео (веб-версия) готово',
+      jobId ? 'Job ID: ' + jobId : null,
+      sceneKey ? 'Сюжет: ' + sceneKey : null,
+      fmt ? 'Формат: ' + fmt : null,
+      bg ? 'Фон: ' + bg : null,
+      mus ? 'Музыка: ' + mus : null,
+      videoUrl ? 'URL: ' + videoUrl : null,
+      'Источник: memoryforever.ru (веб)',
+    ].filter(Boolean);
+    fetch(API_BASE + '/v1/support', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: lines.join('\n'), user_contact: '' }),
+    }).catch(function () {});
+  } catch (_e) {
+    // ignore
+  }
 }
 
 function setupDownload(fullUrl, enabled) {
@@ -584,9 +614,15 @@ async function uploadPhotos(files) {
     safeLog('[MF_WEB] upload success', { files: uploadedPhotoUrls });
   } catch (err) {
     safeLog('[MF_WEB] upload error', err && err.message ? err.message : err);
-    setPhotosStatus('Ошибка при загрузке фото. Попробуйте ещё раз.', 'error');
+    const msgRaw = err && err.message ? err.message : '';
+    const lower = msgRaw.toLowerCase ? msgRaw.toLowerCase() : '';
+    const friendly =
+      lower.includes('failed to fetch') || lower.includes('load failed') || lower.includes('network')
+        ? 'Не удалось связаться с сервером. Попробуйте ещё раз или обновите страницу.'
+        : 'Ошибка при загрузке фото. Попробуйте ещё раз.';
+    setPhotosStatus(friendly, 'error');
     enableRenderButton(uploadedPhotoUrls.length >= requiredPhotosCount());
-    setStatus('Ошибка при загрузке фото: ' + (err && err.message ? err.message : 'неизвестная ошибка'), 'error');
+    setStatus(friendly, 'error');
     photosInput.value = '';
   }
 }
@@ -932,6 +968,8 @@ async function pollStatus(jobId) {
 function startPaymentStatusPolling(paymentKey) {
   if (!paymentKey) return;
   paymentPollAttempts = 0;
+  let paymentConfirmed = false;
+  let fakeProgress = 40;
   const poll = async function () {
     try {
       paymentPollAttempts += 1;
@@ -945,44 +983,56 @@ function startPaymentStatusPolling(paymentKey) {
       const resp = await fetch(API_BASE + '/v1/render/status_by_payment/' + paymentKey);
       if (!resp.ok) {
         paymentStatusTimer = setTimeout(function () {
-          poll();
-        }, POLL_INTERVAL_MS);
-        return;
-      }
-      const data = await resp.json();
-      safeLog('[MF_WEB] payment poll status', data.status);
-      if (data.status === 'pending_payment' || data.status === 'need_payment') {
-        updateRenderProgress(20, 'Ожидаем подтверждение оплаты…');
-        paymentStatusTimer = setTimeout(function () {
-          poll();
-        }, POLL_INTERVAL_MS);
-        return;
-      }
-      if (
-        (data.status === 'render_started' || data.status === 'queued' || data.status === 'processing') &&
-        data.job_id
-      ) {
-        safeLog('[MF_WEB] payment poll render_started', data.job_id);
-        updateRenderProgress(40, 'Оплата получена. Отправляем на генерацию…');
-        clearPollTimer();
-        pollStatus(data.job_id);
-        return;
-      }
-      if (data.status === 'done' && data.result && data.result.video_url && data.job_id) {
-        finalizeRender(data, 'Готово! Видео сгенерировано.');
-        return;
-      }
-      if (data.status === 'error') {
-        const msg = data.message || 'Оплата не подтвердилась. Попробуйте ещё раз.';
-        updateRenderProgress(0, msg);
-        setStatus(msg, 'error');
-        resetRenderState(msg);
-        return;
-      }
-      updateRenderProgress(10, 'Ожидаем подтверждение оплаты…');
+        poll();
+      }, POLL_INTERVAL_MS);
+      return;
+    }
+    const data = await resp.json();
+    safeLog('[MF_WEB] payment poll status', data.status);
+    if (data.status === 'pending_payment' || data.status === 'need_payment') {
+      updateRenderProgress(20, 'Ожидаем подтверждение оплаты…');
       paymentStatusTimer = setTimeout(function () {
         poll();
       }, POLL_INTERVAL_MS);
+      return;
+    }
+    if (
+      (data.status === 'render_started' || data.status === 'queued' || data.status === 'processing') &&
+      data.job_id
+    ) {
+      safeLog('[MF_WEB] payment poll render_started', data.job_id);
+      paymentConfirmed = true;
+      updateRenderProgress(40, 'Оплата получена. Отправляем на генерацию…');
+      clearPollTimer();
+      pollStatus(data.job_id);
+      return;
+    }
+    if (data.status === 'done' && data.result && data.result.video_url && data.job_id) {
+      if (!paymentConfirmed) {
+        updateRenderProgress(80, 'Видео почти готово…');
+      }
+      finalizeRender(data, 'Готово! Видео сгенерировано.');
+      return;
+    }
+    if (data.status === 'error') {
+      const msg = data.message || 'Оплата не подтвердилась. Попробуйте ещё раз.';
+      updateRenderProgress(0, msg);
+      setStatus(msg, 'error');
+      resetRenderState(msg);
+      return;
+    }
+    if (paymentConfirmed) {
+      fakeProgress = Math.min(PAYMENT_FAKE_MAX, fakeProgress + 2);
+      updateRenderProgress(fakeProgress, 'Видео генерируется…');
+      paymentStatusTimer = setTimeout(function () {
+        poll();
+      }, POLL_INTERVAL_MS);
+      return;
+    }
+    updateRenderProgress(10, 'Ожидаем подтверждение оплаты…');
+    paymentStatusTimer = setTimeout(function () {
+      poll();
+    }, POLL_INTERVAL_MS);
     } catch (_e) {
       paymentStatusTimer = setTimeout(function () {
         poll();
