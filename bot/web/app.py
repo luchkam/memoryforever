@@ -1196,22 +1196,3 @@ def create_app() -> FastAPI:
     app.mount("/assets", StaticFiles(directory=str(ROOT / "assets")), name="assets")
 
     return app
-
-# Debug endpoint to introspect free-limit counters (temporary)
-@router.get("/debug/free_limit")
-async def debug_free_limit(user_id: str, source: str = "web"):
-    """
-    ВРЕМЕННЫЙ эндпоинт для отладки лимита бесплатных рендеров.
-    Возвращает текущее значение счётчика и лимита.
-    """
-    free_used = state.get_free_hugs_count(user_id)
-    allowed = free_used < FREE_HUGS_LIMIT or state.is_free_hugs_whitelisted(user_id)
-    return JSONResponse(
-        {
-            "user_id": user_id,
-            "source": source,
-            "free_used": free_used,
-            "free_limit": FREE_HUGS_LIMIT,
-            "allowed": allowed,
-        }
-    )

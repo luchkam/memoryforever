@@ -1,4 +1,4 @@
-const API_BASE = 'https://memoryforever.onrender.com';
+const API_BASE = "https://memoryforever.replit.app";
 const MIN_PHOTOS = 1;
 const MAX_PHOTOS = 2;
 const POLL_INTERVAL_MS = 3000;
