@@ -1,0 +1,557 @@
+.
+├── __pycache__
+│   ├── api.cpython-313.pyc
+│   ├── bot.cpython-312.pyc
+│   ├── bot.cpython-313.pyc
+│   ├── core.cpython-313.pyc
+│   └── state.cpython-313.pyc
+├── assets
+│   ├── backgrounds
+│   │   ├── bg_angels.jpg
+│   │   ├── bg_gates.jpg
+│   │   └── bg_stairs.jpg
+│   ├── examples
+│   │   ├── example1.mp4
+│   │   ├── example2.mp4
+│   │   ├── example3.mp4
+│   │   ├── example4.mp4
+│   │   ├── example5.mp4
+│   │   ├── example7.mp4
+│   │   └── example8.mp4
+│   ├── guide
+│   │   └── guide.mov
+│   ├── legal
+│   │   ├── offer_full.pdf
+│   │   └── policy_full.pdf
+│   ├── overlays
+│   │   └── candle_flowers.png
+│   ├── watermark_black.jpg
+│   └── watermark.png
+├── audio
+│   ├── gentle_arpeggio.mp3
+│   ├── soft_pad.mp3
+│   ├── strings_hymn.mp3
+│   └── user_7742861225_a3d5be508b554394bd262187566a0faf.mp3
+├── bot
+│   ├── __init__.py
+│   ├── __pycache__
+│   │   ├── __init__.cpython-313.pyc
+│   │   ├── app.cpython-313.pyc
+│   │   ├── assets.cpython-313.pyc
+│   │   ├── config.cpython-313.pyc
+│   │   ├── main.cpython-313.pyc
+│   │   ├── state.cpython-313.pyc
+│   │   └── utils.cpython-313.pyc
+│   ├── app.py
+│   ├── assets_catalog.json
+│   ├── assets.py
+│   ├── config.py
+│   ├── handlers
+│   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-313.pyc
+│   │   │   └── core.cpython-313.pyc
+│   │   └── core.py
+│   ├── main.py
+│   ├── media
+│   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   └── storage.cpython-313.pyc
+│   │   └── storage.py
+│   ├── payment
+│   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-313.pyc
+│   │   │   └── tochka.cpython-313.pyc
+│   │   └── tochka.py
+│   ├── render
+│   │   ├── __pycache__
+│   │   │   └── pipeline.cpython-313.pyc
+│   │   └── pipeline.py
+│   ├── state.py
+│   ├── utils.py
+│   └── web
+│       ├── __init__.py
+│       ├── __pycache__
+│       │   ├── __init__.cpython-313.pyc
+│       │   └── app.cpython-313.pyc
+│       └── app.py
+├── bot_legacy.py
+├── bot.py
+├── codex memory 301025 1646.rtf
+├── frontend
+│   └── creatium
+│       ├── memoryforever.css
+│       ├── memoryforever.html
+│       ├── memoryforever.js
+│       └── README_creatium.md
+├── legal_logs
+│   └── accept.jsonl
+├── models
+│   ├── isnet-general-use.onnx
+│   ├── u2net_human_seg.onnx
+│   └── u2net.onnx
+├── orders_logs
+│   └── generations.jsonl
+├── project_structure_full.txt
+├── project_structure_L3.txt
+├── pyproject.toml
+├── quota
+│   └── free_hugs_usage.json
+├── renders
+│   ├── 309797796_20251125_191009_63a8a023343348bea0e7b4446bc7cb82.mp4
+│   ├── 309797796_20251125_191056_147c1c2c2fbc47de9e6e89255a1b1d1e.mp4
+│   ├── 309797796_20251126_100344_283bb9b239bb4082844ded2e0bb18328.mp4
+│   ├── 7742861225_20251124_115356_61741328efcf49a5807dc0adcc00b7b9_WM.mp4
+│   ├── 7742861225_20251124_115356_ff4cbfeda8f44536940dea7e7621af9a.mp4
+│   ├── 7742861225_20251124_115400_17a3b81bf01f419babb66d614fd431fd_FINAL.mp4
+│   ├── 7742861225_20251126_101036_122bfabaad214942854d9c49ef12f541_WM.mp4
+│   ├── 7742861225_20251126_101036_408b8edf82514262b0b0a0f3cd103019.mp4
+│   ├── 7742861225_20251126_101039_d124aa20c0e148849b8e7b30e04bd58d_FINAL.mp4
+│   ├── 7742861225_20251202_180619_1c39a5a1037246b5803e71d5d9bb2724_WM.mp4
+│   ├── 7742861225_20251202_180619_a476d6dcb142450dae702f97f08c8a04.mp4
+│   ├── 7742861225_20251202_180622_81cc79952ec0450086c849c15d3840ba_FINAL.mp4
+│   ├── 7742861225_20251202_180939_d792b953f28f4aa78886b3a7d5d46d15.mp4
+│   ├── 7742861225_20251202_180943_f96607514129413c9040077233f698ab_FINAL.mp4
+│   ├── 7742861225_20251203_151612_5c987f4d9057468d8792e0e12e19701f_WM.mp4
+│   ├── 7742861225_20251203_151612_621f9a0759d943e8b2cb58cabf6bed06.mp4
+│   ├── 7742861225_20251203_151619_a43ef85d7b0b48e196fb9f444109ef0d_FINAL.mp4
+│   ├── temp
+│   │   ├── annot_01d16c43a10b4fca8d2cf85d3ec4ecf9.png
+│   │   ├── annot_07dadd634f2d497bbdcb862706ce0742.png
+│   │   ├── annot_08e0ee05ede0490ab13bb99bfc0c62b3.png
+│   │   ├── annot_0fd66f7eb5a74a579b0d438f5a701af2.png
+│   │   ├── annot_10258f93b67f48b18d69958185fc779f.png
+│   │   ├── annot_13a9510827814e56a7e588de56d32a80.png
+│   │   ├── annot_2415e767ee9048ebb6ac4153899131f6.png
+│   │   ├── annot_2ac99637033648998ed40e2cb3269081.png
+│   │   ├── annot_31675a808cfe4ac3bc4b18a44e6ea0f7.png
+│   │   ├── annot_3c9062305b7d4fefae28e4b46276d33f.png
+│   │   ├── annot_44d61b4a23e645f08f53d7f50f1cbeb9.png
+│   │   ├── annot_46cb3f236ded48b98f3fd01a4a45a571.png
+│   │   ├── annot_4b3ef0692a614e119ba4721ea95f4026.png
+│   │   ├── annot_4ed5860b0fa14464a81d5d3c274fe314.png
+│   │   ├── annot_4fd16f007b7d4994a55324812c5b3f9d.png
+│   │   ├── annot_53047d5f72724960828798605b9dc9bd.png
+│   │   ├── annot_5dbe119a58d04e90aca505fd79390015.png
+│   │   ├── annot_5edb3624046844efb9999af383612a1e.png
+│   │   ├── annot_601099e9ccf6435d95ef1e5ffcc45f6a.png
+│   │   ├── annot_6a99d3e65b85466186174310ddd772d1.png
+│   │   ├── annot_6cd85feaf9d446f1ba8ef1223f54a342.png
+│   │   ├── annot_704f7313e68b49b991002c245920ce27.png
+│   │   ├── annot_7968ee78012247d196e18b4aba7ff24c.png
+│   │   ├── annot_7ed686b837ae4155bb40721f55f5b061.png
+│   │   ├── annot_7f6264d37a354a25b92e47bf0e916612.png
+│   │   ├── annot_80bb3d54b8d34b3aaa6b7d2ae5e5737c.png
+│   │   ├── annot_82a6d318aa7142bf87c3a4a8c33eb873.png
+│   │   ├── annot_8389b6dce0824105a2141819642a08dd.png
+│   │   ├── annot_8d944b89ff5e4235b62b55a784de00f8.png
+│   │   ├── annot_8e5b55496a214792b9e318f77dcdbac6.png
+│   │   ├── annot_8ef0400c940543249be958935ff9df71.png
+│   │   ├── annot_9675a46df7db4331940e1450b3b2941c.png
+│   │   ├── annot_980686e43e4b48098b67df45535bee9d.png
+│   │   ├── annot_a22cfd041e18481ca30fe5e54c61cd7e.png
+│   │   ├── annot_a4a9f539db264b75932808134861039f.png
+│   │   ├── annot_a5d5d808ee33494abd0705afdde1b952.png
+│   │   ├── annot_ab77399fe3914dd99ab569a7204e2af1.png
+│   │   ├── annot_acdec247c8124549a37748603fd072e2.png
+│   │   ├── annot_b11980ca208f42b7b3e84bdfb740942e.png
+│   │   ├── annot_b41a946691df43b39fa6f6ca86ea2c3b.png
+│   │   ├── annot_bddbb56780054af683288a331dc7f51e.png
+│   │   ├── annot_be2ac0671fd04ec08f606a3980673738.png
+│   │   ├── annot_c75f6007e59a4913b9e5900b43c84ddb.png
+│   │   ├── annot_c8789d2ab55a4041bd408e29913f194b.png
+│   │   ├── annot_ce0a8bc9b2924d1490e5dcbe519884e9.png
+│   │   ├── annot_d18856d15cc340cea312c0d77fc0f412.png
+│   │   ├── annot_d93775d53cc74302b3d45f9c4c1334e4.png
+│   │   ├── annot_da9554ecfd074f25b5d4ce9b00cf7e59.png
+│   │   ├── annot_dd7a8f861c68492aa1842e207190cbb6.png
+│   │   ├── annot_e25289adccaf454293239650da8a7159.png
+│   │   ├── annot_e631d4b5868b4e21802164039f0a80cb.png
+│   │   ├── annot_ec58c94c4f0946258c426864a3c2483e.png
+│   │   ├── annot_ed161b4510be4ecbb80be44d5afc3e1b.png
+│   │   ├── annot_ef20568548ed4cf6abd0a1c0369ad9aa.png
+│   │   ├── annot_f0a5fd658c334abf86910d3b2c083187.png
+│   │   ├── annot_f33721913ca34d02b8045bd66a35502f.png
+│   │   ├── annot_f707b9002b564f4fb12a76903513b957.png
+│   │   ├── annot_f7ffe3c458204cebbfc4aa7e30ffb68f.png
+│   │   ├── annot_ff7c565c10d74746a9b5eb90cd05491c.png
+│   │   ├── concat_list.txt
+│   │   ├── concat_video.mp4
+│   │   ├── fail_309797796_1764140583_4a2bee5c409a4b3aa6bfba595f3052d0.json
+│   │   ├── fail_7742861225_1762501070_8eaf9a147ed540389787e15c67b129c4.json
+│   │   ├── fail_7742861225_1764764099_6f65310b01b14a46ba1e59c0393fe428.json
+│   │   ├── ffmpeg_bg_overlay_1762503105_434287599526443abca41da05822b1c3.err.log
+│   │   ├── ffmpeg_bg_overlay_1762503105_434287599526443abca41da05822b1c3.out.log
+│   │   ├── ffmpeg_bg_overlay_1762514232_74ecdfcafeb148cc84e9a0a72904c575.err.log
+│   │   ├── ffmpeg_bg_overlay_1762514232_74ecdfcafeb148cc84e9a0a72904c575.out.log
+│   │   ├── ffmpeg_bg_overlay_1762606308_d3b36ea5758d4d58b945033297d99076.err.log
+│   │   ├── ffmpeg_bg_overlay_1762606308_d3b36ea5758d4d58b945033297d99076.out.log
+│   │   ├── ffmpeg_bg_overlay_1762720704_2fac71de37be4775963bb3892118c363.err.log
+│   │   ├── ffmpeg_bg_overlay_1762720704_2fac71de37be4775963bb3892118c363.out.log
+│   │   ├── ffmpeg_bg_overlay_1762767843_0191acd03d5e4c178be96d96569232ca.err.log
+│   │   ├── ffmpeg_bg_overlay_1762767843_0191acd03d5e4c178be96d96569232ca.out.log
+│   │   ├── ffmpeg_bg_overlay_1762768215_2dd8167db6e2453988eabf45ee56436b.err.log
+│   │   ├── ffmpeg_bg_overlay_1762768215_2dd8167db6e2453988eabf45ee56436b.out.log
+│   │   ├── ffmpeg_bg_overlay_1762867737_d1fe220665e44e49b63a41c9f3adce71.err.log
+│   │   ├── ffmpeg_bg_overlay_1762867737_d1fe220665e44e49b63a41c9f3adce71.out.log
+│   │   ├── ffmpeg_bg_overlay_1762868899_07abc57ef67c479890954570bad923ac.err.log
+│   │   ├── ffmpeg_bg_overlay_1762868899_07abc57ef67c479890954570bad923ac.out.log
+│   │   ├── ffmpeg_bg_overlay_1762869145_cc757bdbc6434b73a12fba3ec3216eea.err.log
+│   │   ├── ffmpeg_bg_overlay_1762869145_cc757bdbc6434b73a12fba3ec3216eea.out.log
+│   │   ├── ffmpeg_bg_overlay_1762869787_f78194500cde4468af3ccb97d0b01e80.err.log
+│   │   ├── ffmpeg_bg_overlay_1762869787_f78194500cde4468af3ccb97d0b01e80.out.log
+│   │   ├── ffmpeg_bg_overlay_1762870181_2ddf2b1036a34707b63467dccdd3a94b.err.log
+│   │   ├── ffmpeg_bg_overlay_1762870181_2ddf2b1036a34707b63467dccdd3a94b.out.log
+│   │   ├── ffmpeg_bg_overlay_1762871015_533a7f751a8a44078d4df0df80fb2304.err.log
+│   │   ├── ffmpeg_bg_overlay_1762871015_533a7f751a8a44078d4df0df80fb2304.out.log
+│   │   ├── ffmpeg_bg_overlay_1763733174_af27f88e40ad4c38a67aec2c622f61b9.err.log
+│   │   ├── ffmpeg_bg_overlay_1763733174_af27f88e40ad4c38a67aec2c622f61b9.out.log
+│   │   ├── ffmpeg_bg_overlay_1763755038_5502f72d84874d859377d54b6df53f75.err.log
+│   │   ├── ffmpeg_bg_overlay_1763755038_5502f72d84874d859377d54b6df53f75.out.log
+│   │   ├── ffmpeg_bg_overlay_1763974440_6ce4f2d79bca442abdc2aab55a12da93.err.log
+│   │   ├── ffmpeg_bg_overlay_1763974440_6ce4f2d79bca442abdc2aab55a12da93.out.log
+│   │   ├── ffmpeg_bg_overlay_1763991431_fd66bd06fd3a4c16baeb194be6058766.err.log
+│   │   ├── ffmpeg_bg_overlay_1763991431_fd66bd06fd3a4c16baeb194be6058766.out.log
+│   │   ├── ffmpeg_bg_overlay_1764141039_75663d030f89423a9844b32e7362884a.err.log
+│   │   ├── ffmpeg_bg_overlay_1764141039_75663d030f89423a9844b32e7362884a.out.log
+│   │   ├── ffmpeg_bg_overlay_1764687982_5f4418ed388b491ea01dc578f545d206.err.log
+│   │   ├── ffmpeg_bg_overlay_1764687982_5f4418ed388b491ea01dc578f545d206.out.log
+│   │   ├── ffmpeg_bg_overlay_1764688183_4b4cc96721124dcba5e312197017b9e9.err.log
+│   │   ├── ffmpeg_bg_overlay_1764688183_4b4cc96721124dcba5e312197017b9e9.out.log
+│   │   ├── ffmpeg_bg_overlay_1764764179_e169b120dcc14e49953726a4f01b4d2d.err.log
+│   │   ├── ffmpeg_bg_overlay_1764764179_e169b120dcc14e49953726a4f01b4d2d.out.log
+│   │   ├── ffmpeg_concat_copy_1762503105_6c6cdd2be5384146bb2f723f43799d59.err.log
+│   │   ├── ffmpeg_concat_copy_1762503105_6c6cdd2be5384146bb2f723f43799d59.out.log
+│   │   ├── ffmpeg_concat_copy_1762514232_e6200c62c6e345268ce219d121e00a3e.err.log
+│   │   ├── ffmpeg_concat_copy_1762514232_e6200c62c6e345268ce219d121e00a3e.out.log
+│   │   ├── ffmpeg_concat_copy_1762606308_61bfe53fcd0d4e4e8aa2bf7d050f8d22.err.log
+│   │   ├── ffmpeg_concat_copy_1762606308_61bfe53fcd0d4e4e8aa2bf7d050f8d22.out.log
+│   │   ├── ffmpeg_concat_copy_1762720704_7fc03efe5c18411db4ef6bcce40fc00f.err.log
+│   │   ├── ffmpeg_concat_copy_1762720704_7fc03efe5c18411db4ef6bcce40fc00f.out.log
+│   │   ├── ffmpeg_concat_copy_1762767843_6c2e90f6789741a1bf7f483462cd9ccf.err.log
+│   │   ├── ffmpeg_concat_copy_1762767843_6c2e90f6789741a1bf7f483462cd9ccf.out.log
+│   │   ├── ffmpeg_concat_copy_1762768215_b7962f5a025247a7ba642515c3da29c3.err.log
+│   │   ├── ffmpeg_concat_copy_1762768215_b7962f5a025247a7ba642515c3da29c3.out.log
+│   │   ├── ffmpeg_concat_copy_1762867737_12236a6bb4f440bbbbeec93500f9a136.err.log
+│   │   ├── ffmpeg_concat_copy_1762867737_12236a6bb4f440bbbbeec93500f9a136.out.log
+│   │   ├── ffmpeg_concat_copy_1762868899_23d24d203c81485aae7a598f1bb00048.err.log
+│   │   ├── ffmpeg_concat_copy_1762868899_23d24d203c81485aae7a598f1bb00048.out.log
+│   │   ├── ffmpeg_concat_copy_1762869145_2dbce18725b54a21b59127eb0858f910.err.log
+│   │   ├── ffmpeg_concat_copy_1762869145_2dbce18725b54a21b59127eb0858f910.out.log
+│   │   ├── ffmpeg_concat_copy_1762869787_e2fcc63d0ead4dcab3b3388aebed2af7.err.log
+│   │   ├── ffmpeg_concat_copy_1762869787_e2fcc63d0ead4dcab3b3388aebed2af7.out.log
+│   │   ├── ffmpeg_concat_copy_1762870181_df92398f524e447988bd420aac0e146e.err.log
+│   │   ├── ffmpeg_concat_copy_1762870181_df92398f524e447988bd420aac0e146e.out.log
+│   │   ├── ffmpeg_concat_copy_1762871015_335713ba5d634eb3a81eef8515a4b158.err.log
+│   │   ├── ffmpeg_concat_copy_1762871015_335713ba5d634eb3a81eef8515a4b158.out.log
+│   │   ├── ffmpeg_concat_copy_1763733174_8bda1a962176402dab82452f14849ef2.err.log
+│   │   ├── ffmpeg_concat_copy_1763733174_8bda1a962176402dab82452f14849ef2.out.log
+│   │   ├── ffmpeg_concat_copy_1763755038_60a550cf543a4c8f91103685f5893b32.err.log
+│   │   ├── ffmpeg_concat_copy_1763755038_60a550cf543a4c8f91103685f5893b32.out.log
+│   │   ├── ffmpeg_concat_copy_1763974440_097667dd791049e997df321b97fc5619.err.log
+│   │   ├── ffmpeg_concat_copy_1763974440_097667dd791049e997df321b97fc5619.out.log
+│   │   ├── ffmpeg_concat_copy_1763991431_6290e704691a4288889a63cd59738e04.err.log
+│   │   ├── ffmpeg_concat_copy_1763991431_6290e704691a4288889a63cd59738e04.out.log
+│   │   ├── ffmpeg_concat_copy_1764141039_87c46c31154245d2b847b88079e0142a.err.log
+│   │   ├── ffmpeg_concat_copy_1764141039_87c46c31154245d2b847b88079e0142a.out.log
+│   │   ├── ffmpeg_concat_copy_1764687982_e5224b52e21549d08c928385623cbd87.err.log
+│   │   ├── ffmpeg_concat_copy_1764687982_e5224b52e21549d08c928385623cbd87.out.log
+│   │   ├── ffmpeg_concat_copy_1764688183_b21a0ef2843743f2b22b6e843eccb216.err.log
+│   │   ├── ffmpeg_concat_copy_1764688183_b21a0ef2843743f2b22b6e843eccb216.out.log
+│   │   ├── ffmpeg_concat_copy_1764764179_a3631ce7d5d040808b80eff3832b7f05.err.log
+│   │   ├── ffmpeg_concat_copy_1764764179_a3631ce7d5d040808b80eff3832b7f05.out.log
+│   │   ├── ffmpeg_mux_music_1762503108_3f6ed03aa50e4dd7ad03caaad50927b4.err.log
+│   │   ├── ffmpeg_mux_music_1762503108_3f6ed03aa50e4dd7ad03caaad50927b4.out.log
+│   │   ├── ffmpeg_mux_music_1762514234_4c9cbe4356ef492b937957574db539eb.err.log
+│   │   ├── ffmpeg_mux_music_1762514234_4c9cbe4356ef492b937957574db539eb.out.log
+│   │   ├── ffmpeg_mux_music_1762606310_0550792f15274388a33e7b6fa1d479cb.err.log
+│   │   ├── ffmpeg_mux_music_1762606310_0550792f15274388a33e7b6fa1d479cb.out.log
+│   │   ├── ffmpeg_mux_music_1762720709_a4d86f6a73284a2aab0b9755c9fc0090.err.log
+│   │   ├── ffmpeg_mux_music_1762720709_a4d86f6a73284a2aab0b9755c9fc0090.out.log
+│   │   ├── ffmpeg_mux_music_1762767851_eac9badd3edb4b9383b7657f4f3efa9c.err.log
+│   │   ├── ffmpeg_mux_music_1762767851_eac9badd3edb4b9383b7657f4f3efa9c.out.log
+│   │   ├── ffmpeg_mux_music_1762768219_c87b32f842d94ac6a640aea0b52855f6.err.log
+│   │   ├── ffmpeg_mux_music_1762768219_c87b32f842d94ac6a640aea0b52855f6.out.log
+│   │   ├── ffmpeg_mux_music_1762867739_712a1bd2a1c842f88423b2c05729053b.err.log
+│   │   ├── ffmpeg_mux_music_1762867739_712a1bd2a1c842f88423b2c05729053b.out.log
+│   │   ├── ffmpeg_mux_music_1762868904_fcd21d2f1697493ca3cb7a1f03972d98.err.log
+│   │   ├── ffmpeg_mux_music_1762868904_fcd21d2f1697493ca3cb7a1f03972d98.out.log
+│   │   ├── ffmpeg_mux_music_1762869148_f4991a3c4d4e4382947ee7c2cddb246b.err.log
+│   │   ├── ffmpeg_mux_music_1762869148_f4991a3c4d4e4382947ee7c2cddb246b.out.log
+│   │   ├── ffmpeg_mux_music_1762869790_bfcc8f6d0f0c44f796c5f5ad9677572a.err.log
+│   │   ├── ffmpeg_mux_music_1762869790_bfcc8f6d0f0c44f796c5f5ad9677572a.out.log
+│   │   ├── ffmpeg_mux_music_1762870184_eb2c1028a96f422f9ed76c662f801ccf.err.log
+│   │   ├── ffmpeg_mux_music_1762870184_eb2c1028a96f422f9ed76c662f801ccf.out.log
+│   │   ├── ffmpeg_mux_music_1762871016_62b5d4fa9cf54540810545980a3fce01.err.log
+│   │   ├── ffmpeg_mux_music_1762871016_62b5d4fa9cf54540810545980a3fce01.out.log
+│   │   ├── ffmpeg_mux_music_1763733176_9b2082e79055435ab2abaa39c3a7d282.err.log
+│   │   ├── ffmpeg_mux_music_1763733176_9b2082e79055435ab2abaa39c3a7d282.out.log
+│   │   ├── ffmpeg_mux_music_1763755047_c7303a62746646fa975fe7ae1e25dc9c.err.log
+│   │   ├── ffmpeg_mux_music_1763755047_c7303a62746646fa975fe7ae1e25dc9c.out.log
+│   │   ├── ffmpeg_mux_music_1763974442_97f29175041844f7a3914d95fa7b76a4.err.log
+│   │   ├── ffmpeg_mux_music_1763974442_97f29175041844f7a3914d95fa7b76a4.out.log
+│   │   ├── ffmpeg_mux_music_1763991433_bee9a28135684df3958cfabb019cb0b6.err.log
+│   │   ├── ffmpeg_mux_music_1763991433_bee9a28135684df3958cfabb019cb0b6.out.log
+│   │   ├── ffmpeg_mux_music_1764141041_bcf05d0320224994b44a2e8f1be7a794.err.log
+│   │   ├── ffmpeg_mux_music_1764141041_bcf05d0320224994b44a2e8f1be7a794.out.log
+│   │   ├── ffmpeg_mux_music_1764687984_53c3d91e46504a0d8d1133eb4148b82f.err.log
+│   │   ├── ffmpeg_mux_music_1764687984_53c3d91e46504a0d8d1133eb4148b82f.out.log
+│   │   ├── ffmpeg_mux_music_1764688185_18e6c09752b64bfe8401831876c1cd90.err.log
+│   │   ├── ffmpeg_mux_music_1764688185_18e6c09752b64bfe8401831876c1cd90.out.log
+│   │   ├── ffmpeg_mux_music_1764764189_a53ea2761e204095bb52c7e1c10c20ce.err.log
+│   │   ├── ffmpeg_mux_music_1764764189_a53ea2761e204095bb52c7e1c10c20ce.out.log
+│   │   ├── ffmpeg_title_video_1762503103_0a9cbfe02ff34a2986fd635f4425e7e3.err.log
+│   │   ├── ffmpeg_title_video_1762503103_0a9cbfe02ff34a2986fd635f4425e7e3.out.log
+│   │   ├── ffmpeg_title_video_1762514232_41fd084a5bc74ba3ab386fafbe799461.err.log
+│   │   ├── ffmpeg_title_video_1762514232_41fd084a5bc74ba3ab386fafbe799461.out.log
+│   │   ├── ffmpeg_title_video_1762606308_6e6046d48f3144f0bef49411a84c5b58.err.log
+│   │   ├── ffmpeg_title_video_1762606308_6e6046d48f3144f0bef49411a84c5b58.out.log
+│   │   ├── ffmpeg_title_video_1762720703_c5eb93df259d49a08e9363457b075d92.err.log
+│   │   ├── ffmpeg_title_video_1762720703_c5eb93df259d49a08e9363457b075d92.out.log
+│   │   ├── ffmpeg_title_video_1762767843_e3913f279ac340068990cd068069adbf.err.log
+│   │   ├── ffmpeg_title_video_1762767843_e3913f279ac340068990cd068069adbf.out.log
+│   │   ├── ffmpeg_title_video_1762768215_05d29305b9a942c29a19067fc96856c3.err.log
+│   │   ├── ffmpeg_title_video_1762768215_05d29305b9a942c29a19067fc96856c3.out.log
+│   │   ├── ffmpeg_title_video_1762867737_2ea76d18631c44159c4b87f9131fa818.err.log
+│   │   ├── ffmpeg_title_video_1762867737_2ea76d18631c44159c4b87f9131fa818.out.log
+│   │   ├── ffmpeg_title_video_1762868899_49c17710b78c4557ab0ff7d6372cbbd8.err.log
+│   │   ├── ffmpeg_title_video_1762868899_49c17710b78c4557ab0ff7d6372cbbd8.out.log
+│   │   ├── ffmpeg_title_video_1762869145_18c282f97a754dac897b9fe7b3962869.err.log
+│   │   ├── ffmpeg_title_video_1762869145_18c282f97a754dac897b9fe7b3962869.out.log
+│   │   ├── ffmpeg_title_video_1762869787_439582f3d56647d8b98df6b054470d78.err.log
+│   │   ├── ffmpeg_title_video_1762869787_439582f3d56647d8b98df6b054470d78.out.log
+│   │   ├── ffmpeg_title_video_1762870181_5f2f7c838f2c45178ea8a62d44a03a89.err.log
+│   │   ├── ffmpeg_title_video_1762870181_5f2f7c838f2c45178ea8a62d44a03a89.out.log
+│   │   ├── ffmpeg_title_video_1762871014_c7907b4431a64d16956fd1d108411ef0.err.log
+│   │   ├── ffmpeg_title_video_1762871014_c7907b4431a64d16956fd1d108411ef0.out.log
+│   │   ├── ffmpeg_title_video_1763733174_2fd4b5d3bc7044f787b11f496bac67c6.err.log
+│   │   ├── ffmpeg_title_video_1763733174_2fd4b5d3bc7044f787b11f496bac67c6.out.log
+│   │   ├── ffmpeg_title_video_1763755037_de173cc3246e4735b1ac2a35cc8ab916.err.log
+│   │   ├── ffmpeg_title_video_1763755037_de173cc3246e4735b1ac2a35cc8ab916.out.log
+│   │   ├── ffmpeg_title_video_1763974440_0b59911aa5ef4c10905b4ad2e7a3677f.err.log
+│   │   ├── ffmpeg_title_video_1763974440_0b59911aa5ef4c10905b4ad2e7a3677f.out.log
+│   │   ├── ffmpeg_title_video_1763991431_7ffe04229c204522825d3ae84901a84c.err.log
+│   │   ├── ffmpeg_title_video_1763991431_7ffe04229c204522825d3ae84901a84c.out.log
+│   │   ├── ffmpeg_title_video_1764141039_95b0408824214794811df99deb87c4d3.err.log
+│   │   ├── ffmpeg_title_video_1764141039_95b0408824214794811df99deb87c4d3.out.log
+│   │   ├── ffmpeg_title_video_1764687982_3e309e0d10b0442d8d791de5709750f2.err.log
+│   │   ├── ffmpeg_title_video_1764687982_3e309e0d10b0442d8d791de5709750f2.out.log
+│   │   ├── ffmpeg_title_video_1764688183_6d8a0c9bbe004c4297655c15427fa5b7.err.log
+│   │   ├── ffmpeg_title_video_1764688183_6d8a0c9bbe004c4297655c15427fa5b7.out.log
+│   │   ├── ffmpeg_title_video_1764764179_9236e0e1341d431d8cc0b3cf9557b278.err.log
+│   │   ├── ffmpeg_title_video_1764764179_9236e0e1341d431d8cc0b3cf9557b278.out.log
+│   │   ├── ffmpeg_wm_corner_1762503108_aec921e74fba414c85669b3f55e9cbb1.err.log
+│   │   ├── ffmpeg_wm_corner_1762503108_aec921e74fba414c85669b3f55e9cbb1.out.log
+│   │   ├── ffmpeg_wm_corner_1762514234_573b5721f27c426785589a955e488980.err.log
+│   │   ├── ffmpeg_wm_corner_1762514234_573b5721f27c426785589a955e488980.out.log
+│   │   ├── ffmpeg_wm_corner_1762606309_773c29e98f1343e0ac544af601075502.err.log
+│   │   ├── ffmpeg_wm_corner_1762606309_773c29e98f1343e0ac544af601075502.out.log
+│   │   ├── ffmpeg_wm_corner_1762720708_29ae8fceb6a4422b8d1b218b99eb1da5.err.log
+│   │   ├── ffmpeg_wm_corner_1762720708_29ae8fceb6a4422b8d1b218b99eb1da5.out.log
+│   │   ├── ffmpeg_wm_corner_1762767850_5448892bbfd444a59f8e2f921543ccf6.err.log
+│   │   ├── ffmpeg_wm_corner_1762767850_5448892bbfd444a59f8e2f921543ccf6.out.log
+│   │   ├── ffmpeg_wm_corner_1762768218_0a2917019f6a45ea96fdf483ff86333d.err.log
+│   │   ├── ffmpeg_wm_corner_1762768218_0a2917019f6a45ea96fdf483ff86333d.out.log
+│   │   ├── ffmpeg_wm_corner_1762867738_6085fb8dc1c94ea082102998504b077f.err.log
+│   │   ├── ffmpeg_wm_corner_1762867738_6085fb8dc1c94ea082102998504b077f.out.log
+│   │   ├── ffmpeg_wm_corner_1762868904_a4e46e106f334ca592f0f84e00baa727.err.log
+│   │   ├── ffmpeg_wm_corner_1762868904_a4e46e106f334ca592f0f84e00baa727.out.log
+│   │   ├── ffmpeg_wm_corner_1762869148_d81bbed0ee084ceda5060b5f3e3b2057.err.log
+│   │   ├── ffmpeg_wm_corner_1762869148_d81bbed0ee084ceda5060b5f3e3b2057.out.log
+│   │   ├── ffmpeg_wm_corner_1762869790_241f0cd90b0c4a6ebce18c68a9a0a38b.err.log
+│   │   ├── ffmpeg_wm_corner_1762869790_241f0cd90b0c4a6ebce18c68a9a0a38b.out.log
+│   │   ├── ffmpeg_wm_corner_1762870184_624b5919e5904f9492ce1bb3c3bc14e1.err.log
+│   │   ├── ffmpeg_wm_corner_1762870184_624b5919e5904f9492ce1bb3c3bc14e1.out.log
+│   │   ├── ffmpeg_wm_corner_1762871016_1ac781c2fe5a4074991ae044499741f4.err.log
+│   │   ├── ffmpeg_wm_corner_1762871016_1ac781c2fe5a4074991ae044499741f4.out.log
+│   │   ├── ffmpeg_wm_corner_1763733176_452bee0581cf4627bd844309094be2f1.err.log
+│   │   ├── ffmpeg_wm_corner_1763733176_452bee0581cf4627bd844309094be2f1.out.log
+│   │   ├── ffmpeg_wm_corner_1763755046_a33b4cf89dd64909846451bb84bc5220.err.log
+│   │   ├── ffmpeg_wm_corner_1763755046_a33b4cf89dd64909846451bb84bc5220.out.log
+│   │   ├── ffmpeg_wm_corner_1763974442_aa2bc7e6042d4c5e90df32bb4f035cff.err.log
+│   │   ├── ffmpeg_wm_corner_1763974442_aa2bc7e6042d4c5e90df32bb4f035cff.out.log
+│   │   ├── ffmpeg_wm_corner_1763991433_0df3e9d1d15b43a18ba1856e1ce9522e.err.log
+│   │   ├── ffmpeg_wm_corner_1763991433_0df3e9d1d15b43a18ba1856e1ce9522e.out.log
+│   │   ├── ffmpeg_wm_corner_1764141041_98cf33a8881044c58432ca6b3d92fa81.err.log
+│   │   ├── ffmpeg_wm_corner_1764141041_98cf33a8881044c58432ca6b3d92fa81.out.log
+│   │   ├── ffmpeg_wm_corner_1764687984_81683c53163e4b8f88f368afde41bbe4.err.log
+│   │   ├── ffmpeg_wm_corner_1764687984_81683c53163e4b8f88f368afde41bbe4.out.log
+│   │   ├── ffmpeg_wm_corner_1764688185_b8f960abd9f14f0cad4eed0ac64a7757.err.log
+│   │   ├── ffmpeg_wm_corner_1764688185_b8f960abd9f14f0cad4eed0ac64a7757.out.log
+│   │   ├── ffmpeg_wm_corner_1764764188_ff7f6069949546bea265d1c57ce95fe3.err.log
+│   │   ├── ffmpeg_wm_corner_1764764188_ff7f6069949546bea265d1c57ce95fe3.out.log
+│   │   ├── ffmpeg_wm_fullscreen_1762514232_9edca3e150f645c1a821f5e9525754d1.err.log
+│   │   ├── ffmpeg_wm_fullscreen_1762514232_9edca3e150f645c1a821f5e9525754d1.out.log
+│   │   ├── ffmpeg_wm_fullscreen_1762606307_1120e9d9c7ea4d238eaf01a97207c084.err.log
+│   │   ├── ffmpeg_wm_fullscreen_1762606307_1120e9d9c7ea4d238eaf01a97207c084.out.log
+│   │   ├── ffmpeg_wm_fullscreen_1762720703_00151d19bdad42db86d83ecd15ff23f2.err.log
+│   │   ├── ffmpeg_wm_fullscreen_1762720703_00151d19bdad42db86d83ecd15ff23f2.out.log
+│   │   ├── ffmpeg_wm_fullscreen_1762867736_5b321c69dccc4417ab42119379b3a83b.err.log
+│   │   ├── ffmpeg_wm_fullscreen_1762867736_5b321c69dccc4417ab42119379b3a83b.out.log
+│   │   ├── ffmpeg_wm_fullscreen_1763733173_4cfee8dda4a942e9980ac0fb029e875e.err.log
+│   │   ├── ffmpeg_wm_fullscreen_1763733173_4cfee8dda4a942e9980ac0fb029e875e.out.log
+│   │   ├── ffmpeg_wm_fullscreen_1763804471_5ba65b7bbe3b4f60b06767b9a88dd62e.err.log
+│   │   ├── ffmpeg_wm_fullscreen_1763804471_5ba65b7bbe3b4f60b06767b9a88dd62e.out.log
+│   │   ├── ffmpeg_wm_fullscreen_1763805585_1aa1ce7b176b4213af0f7ac847879316.err.log
+│   │   ├── ffmpeg_wm_fullscreen_1763805585_1aa1ce7b176b4213af0f7ac847879316.out.log
+│   │   ├── ffmpeg_wm_fullscreen_1763974439_3bc9bdf92821464fa8a045527c3636b6.err.log
+│   │   ├── ffmpeg_wm_fullscreen_1763974439_3bc9bdf92821464fa8a045527c3636b6.out.log
+│   │   ├── ffmpeg_wm_fullscreen_1763991430_c05c118fbae04892b1c2a1b12f8dc027.err.log
+│   │   ├── ffmpeg_wm_fullscreen_1763991430_c05c118fbae04892b1c2a1b12f8dc027.out.log
+│   │   ├── ffmpeg_wm_fullscreen_1764141039_5e9a5973f7454d578c37145f3a81075e.err.log
+│   │   ├── ffmpeg_wm_fullscreen_1764141039_5e9a5973f7454d578c37145f3a81075e.out.log
+│   │   ├── ffmpeg_wm_fullscreen_1764687982_6c5617bce85d42d294ee55a3611c7958.err.log
+│   │   ├── ffmpeg_wm_fullscreen_1764687982_6c5617bce85d42d294ee55a3611c7958.out.log
+│   │   ├── ffmpeg_wm_fullscreen_1764764175_3f54f85fa97d44df8b2a0d09ab20291d.err.log
+│   │   ├── ffmpeg_wm_fullscreen_1764764175_3f54f85fa97d44df8b2a0d09ab20291d.out.log
+│   │   ├── ffmpeg_xfade_1762767841_829f0c69cd3547d39ed94113370e6e90.err.log
+│   │   ├── ffmpeg_xfade_1762767841_829f0c69cd3547d39ed94113370e6e90.out.log
+│   │   ├── ffmpeg_xfade_1762767842_bf82a90a4ff7445b8d9441b8d84490f4.err.log
+│   │   ├── ffmpeg_xfade_1762767842_bf82a90a4ff7445b8d9441b8d84490f4.out.log
+│   │   ├── ffmpeg_xfade_1762868898_43be9e5fc64743cd98fb8b5b87fe3cc5.err.log
+│   │   ├── ffmpeg_xfade_1762868898_43be9e5fc64743cd98fb8b5b87fe3cc5.out.log
+│   │   ├── ffmpeg_xfade_1763755037_e52f0bb6ea0243dd85d4d45bf18d00cb.err.log
+│   │   ├── ffmpeg_xfade_1763755037_e52f0bb6ea0243dd85d4d45bf18d00cb.out.log
+│   │   ├── ffmpeg_xfade_1764087059_0815509ee8334b6e823387fb5d0120a7.err.log
+│   │   ├── ffmpeg_xfade_1764087059_0815509ee8334b6e823387fb5d0120a7.out.log
+│   │   ├── metrics_01d16c43a10b4fca8d2cf85d3ec4ecf9.json
+│   │   ├── metrics_07dadd634f2d497bbdcb862706ce0742.json
+│   │   ├── metrics_08e0ee05ede0490ab13bb99bfc0c62b3.json
+│   │   ├── metrics_0fd66f7eb5a74a579b0d438f5a701af2.json
+│   │   ├── metrics_10258f93b67f48b18d69958185fc779f.json
+│   │   ├── metrics_13a9510827814e56a7e588de56d32a80.json
+│   │   ├── metrics_2415e767ee9048ebb6ac4153899131f6.json
+│   │   ├── metrics_2ac99637033648998ed40e2cb3269081.json
+│   │   ├── metrics_31675a808cfe4ac3bc4b18a44e6ea0f7.json
+│   │   ├── metrics_3c9062305b7d4fefae28e4b46276d33f.json
+│   │   ├── metrics_44d61b4a23e645f08f53d7f50f1cbeb9.json
+│   │   ├── metrics_46cb3f236ded48b98f3fd01a4a45a571.json
+│   │   ├── metrics_4b3ef0692a614e119ba4721ea95f4026.json
+│   │   ├── metrics_4ed5860b0fa14464a81d5d3c274fe314.json
+│   │   ├── metrics_4fd16f007b7d4994a55324812c5b3f9d.json
+│   │   ├── metrics_53047d5f72724960828798605b9dc9bd.json
+│   │   ├── metrics_5dbe119a58d04e90aca505fd79390015.json
+│   │   ├── metrics_5edb3624046844efb9999af383612a1e.json
+│   │   ├── metrics_601099e9ccf6435d95ef1e5ffcc45f6a.json
+│   │   ├── metrics_6a99d3e65b85466186174310ddd772d1.json
+│   │   ├── metrics_6cd85feaf9d446f1ba8ef1223f54a342.json
+│   │   ├── metrics_704f7313e68b49b991002c245920ce27.json
+│   │   ├── metrics_7968ee78012247d196e18b4aba7ff24c.json
+│   │   ├── metrics_7ed686b837ae4155bb40721f55f5b061.json
+│   │   ├── metrics_7f6264d37a354a25b92e47bf0e916612.json
+│   │   ├── metrics_80bb3d54b8d34b3aaa6b7d2ae5e5737c.json
+│   │   ├── metrics_82a6d318aa7142bf87c3a4a8c33eb873.json
+│   │   ├── metrics_8389b6dce0824105a2141819642a08dd.json
+│   │   ├── metrics_8d944b89ff5e4235b62b55a784de00f8.json
+│   │   ├── metrics_8e5b55496a214792b9e318f77dcdbac6.json
+│   │   ├── metrics_8ef0400c940543249be958935ff9df71.json
+│   │   ├── metrics_9675a46df7db4331940e1450b3b2941c.json
+│   │   ├── metrics_980686e43e4b48098b67df45535bee9d.json
+│   │   ├── metrics_a22cfd041e18481ca30fe5e54c61cd7e.json
+│   │   ├── metrics_a4a9f539db264b75932808134861039f.json
+│   │   ├── metrics_a5d5d808ee33494abd0705afdde1b952.json
+│   │   ├── metrics_ab77399fe3914dd99ab569a7204e2af1.json
+│   │   ├── metrics_acdec247c8124549a37748603fd072e2.json
+│   │   ├── metrics_b11980ca208f42b7b3e84bdfb740942e.json
+│   │   ├── metrics_b41a946691df43b39fa6f6ca86ea2c3b.json
+│   │   ├── metrics_bddbb56780054af683288a331dc7f51e.json
+│   │   ├── metrics_be2ac0671fd04ec08f606a3980673738.json
+│   │   ├── metrics_c75f6007e59a4913b9e5900b43c84ddb.json
+│   │   ├── metrics_c8789d2ab55a4041bd408e29913f194b.json
+│   │   ├── metrics_ce0a8bc9b2924d1490e5dcbe519884e9.json
+│   │   ├── metrics_d18856d15cc340cea312c0d77fc0f412.json
+│   │   ├── metrics_d93775d53cc74302b3d45f9c4c1334e4.json
+│   │   ├── metrics_da9554ecfd074f25b5d4ce9b00cf7e59.json
+│   │   ├── metrics_dd7a8f861c68492aa1842e207190cbb6.json
+│   │   ├── metrics_e25289adccaf454293239650da8a7159.json
+│   │   ├── metrics_e631d4b5868b4e21802164039f0a80cb.json
+│   │   ├── metrics_ec58c94c4f0946258c426864a3c2483e.json
+│   │   ├── metrics_ed161b4510be4ecbb80be44d5afc3e1b.json
+│   │   ├── metrics_ef20568548ed4cf6abd0a1c0369ad9aa.json
+│   │   ├── metrics_f0a5fd658c334abf86910d3b2c083187.json
+│   │   ├── metrics_f33721913ca34d02b8045bd66a35502f.json
+│   │   ├── metrics_f707b9002b564f4fb12a76903513b957.json
+│   │   ├── metrics_f7ffe3c458204cebbfc4aa7e30ffb68f.json
+│   │   ├── metrics_ff7c565c10d74746a9b5eb90cd05491c.json
+│   │   ├── runway_payload_1762501066.json
+│   │   ├── runway_payload_1762501068.json
+│   │   ├── runway_payload_1762501069.json
+│   │   ├── runway_payload_1762503062.json
+│   │   ├── runway_payload_1762514204.json
+│   │   ├── runway_payload_1762606277.json
+│   │   ├── runway_payload_1762716553.json
+│   │   ├── runway_payload_1762767715.json
+│   │   ├── runway_payload_1762767757.json
+│   │   ├── runway_payload_1762767798.json
+│   │   ├── runway_payload_1762768172.json
+│   │   ├── runway_payload_1762867701.json
+│   │   ├── runway_payload_1762868822.json
+│   │   ├── runway_payload_1762868858.json
+│   │   ├── runway_payload_1762869109.json
+│   │   ├── runway_payload_1762869752.json
+│   │   ├── runway_payload_1762870147.json
+│   │   ├── runway_payload_1762870985.json
+│   │   ├── runway_payload_1763733142.json
+│   │   ├── runway_payload_1763754955.json
+│   │   ├── runway_payload_1763754999.json
+│   │   ├── runway_payload_1763803133.json
+│   │   ├── runway_payload_1763804443.json
+│   │   ├── runway_payload_1763805557.json
+│   │   ├── runway_payload_1763974411.json
+│   │   ├── runway_payload_1763991401.json
+│   │   ├── runway_payload_1764086960.json
+│   │   ├── runway_payload_1764087013.json
+│   │   ├── runway_payload_1764140574.json
+│   │   ├── runway_payload_1764140584.json
+│   │   ├── runway_payload_1764141010.json
+│   │   ├── runway_payload_1764687947.json
+│   │   ├── runway_payload_1764688141.json
+│   │   ├── runway_payload_1764764096.json
+│   │   ├── runway_payload_1764764141.json
+│   │   ├── title_video.mp4
+│   │   ├── title.png
+│   │   ├── with_bg_anim.mp4
+│   │   ├── with_watermark.mp4
+│   │   ├── xfade_1_1156f437553d486094ec7a16c2cf7a27.mp4
+│   │   ├── xfade_1_52460dc54cd642dd803bd1125c63632b.mp4
+│   │   ├── xfade_1_544ef77acf8e4b5e8957cbfa13ee78ae.mp4
+│   │   ├── xfade_1_d1289c06021e4ece9c49409494d10086.mp4
+│   │   └── xfade_2_92f10128fd5f41f09c23ec46d142cc7a.mp4
+│   ├── web_20251122_125943_d7e331a29032414c818d44359e2654b2.mp4
+│   ├── web_20251124_163708_3e8b35392f7e44b09ba2503d1b91ae79.mp4
+│   └── web_20251124_163711_69ba58c9a537445fa3d51bfdafdd6d01_FINAL.mp4
+├── replit.md
+├── replit.nix
+├── requirements.txt
+├── scripts
+│   ├── test_bot_two_scenes.py
+│   ├── test_free_hugs_render.py
+│   ├── test_pipeline_end_to_end.py
+│   ├── test_watermark_render.py
+│   └── test_web_render.py
+├── uploads
+│   ├── 309797796_1764322422_a8382500868c44c893bd7b4d39fd8d81.jpg
+│   ├── 309797796_1764322422_d793ce9e895f4d8a8922d2508493eaaf.jpg
+│   ├── 309797796_1764322436_0ecc15c87a1f47adb56af8ce744083fc.jpg
+│   ├── 7742861225_1764687937_4046f05acffd40539452866b6e83d7d8.jpg
+│   ├── 7742861225_1764687937_bd70df7faf194edabee1783788f67c49.jpg
+│   ├── 7742861225_1764688069_85ec4e923b5343fb8d2df24411dc8ab2.jpg
+│   ├── 7742861225_1764763975_16dfac0c2a39440faee0befd1f3e8214.jpg
+│   ├── 7742861225_1764763975_8ad367cbc8f04a3096522fa8015f1744.jpg
+│   ├── 7742861225_1764764126_7274b38da4e44b26bbce44e85a00a311.jpg
+│   ├── 7742861225_1764764126_eabe84edd6da4af68ad78009bb949046.jpg
+│   ├── start_20251128_123343_9675a46df7db4331940e1450b3b2941c.png
+│   ├── start_20251128_123356_ce0a8bc9b2924d1490e5dcbe519884e9.png
+│   ├── start_20251202_180539_0fd66f7eb5a74a579b0d438f5a701af2.jpg
+│   ├── start_20251202_180539_0fd66f7eb5a74a579b0d438f5a701af2.png
+│   ├── start_20251202_180750_b41a946691df43b39fa6f6ca86ea2c3b.jpg
+│   ├── start_20251202_180750_b41a946691df43b39fa6f6ca86ea2c3b.png
+│   ├── start_20251203_151256_6cd85feaf9d446f1ba8ef1223f54a342.jpg
+│   ├── start_20251203_151256_6cd85feaf9d446f1ba8ef1223f54a342.png
+│   ├── start_20251203_151530_10258f93b67f48b18d69958185fc779f.jpg
+│   └── start_20251203_151530_10258f93b67f48b18d69958185fc779f.png
+├── uv.lock
+└── веб версия codex 301025 1644.txt
+
+31 directories, 524 files

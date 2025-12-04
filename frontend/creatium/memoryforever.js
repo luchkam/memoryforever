@@ -880,7 +880,9 @@ async function startPaidRender() {
       currentJobId = data.job_id;
       lastJobId = data.job_id;
       pollAttempts = 0;
-      updateRenderProgress(40, 'Оплата получена. Отправляем на генерацию…');
+      var isPaid = isPaidScene(payload.scene_key);
+      var msg = isPaid ? 'Оплата получена. Отправляем на генерацию…' : 'Отправляем на генерацию…';
+      updateRenderProgress(40, msg);
       pendingPayment = null;
       pollStatus(currentJobId);
       return;
@@ -1053,7 +1055,9 @@ function startPaymentStatusPolling(paymentKey) {
       ) {
         safeLog('[MF_WEB] payment poll render_started', data.job_id);
         paymentConfirmed = true;
-        updateRenderProgress(40, 'Оплата получена. Отправляем на генерацию…');
+        var isPaid2 = isPaidScene();
+        var msg2 = isPaid2 ? 'Оплата получена. Отправляем на генерацию…' : 'Отправляем на генерацию…';
+        updateRenderProgress(40, msg2);
         clearPollTimer();
         pollStatus(data.job_id);
         return;
