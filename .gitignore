@@ -5,3 +5,7 @@ uploads/
 __pycache__/
 *.mp4
 .DS_Store
+# логи с персональными данными пользователей — не коммитить
+legal_logs/
+orders_logs/
+audio/user_*
