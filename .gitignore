@@ -9,3 +9,8 @@ __pycache__/
 legal_logs/
 orders_logs/
 audio/user_*
+.env
+.env.*
+*.rtf
+!.env.example
+!.env.sample
